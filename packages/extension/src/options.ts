@@ -30,6 +30,16 @@ function setFeedback(message: string, bad = false): void {
   feedback.style.color = bad ? "var(--bad)" : "var(--muted)";
 }
 
+function tokenProblem(value: string): string | null {
+  const token = value.trim();
+  if (!token) return "The token cannot be empty.";
+  if (token.length > 200 || /\s/.test(token) || /[{}\[\]"]/.test(token)) {
+    return "That looks like a cookie export or JSON. Use the short bridge token from the server, not a site session.";
+  }
+  if (token.length < 8) return "That token is too short. Copy the whole token file.";
+  return null;
+}
+
 function setStatus(state: string, text: string): void {
   if (pill) pill.dataset["state"] = state;
   if (statusText) statusText.textContent = text;
@@ -82,8 +92,9 @@ saveButton?.addEventListener("click", () => {
   }
 
   const token = tokenInput?.value.trim() ?? "";
-  if (!token) {
-    setFeedback("The token cannot be empty.", true);
+  const problem = tokenProblem(token);
+  if (problem) {
+    setFeedback(problem, true);
     tokenInput?.focus();
     return;
   }

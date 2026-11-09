@@ -229,6 +229,7 @@ tests/             mcp.test.mjs, e2e.test.mjs
 | Status **Needs attention** | Token di extension berbeda dengan file token. Salin ulang, lalu lihat detail di popup. |
 | Extension tidak muncul di `chrome://extensions` | Folder yang dipilih salah atau Chrome memakai profil lain. Pilih `packages/extension/dist` yang berisi `manifest.json`. |
 | Popup menampilkan token 0 chars | Token belum tersimpan. Paste ulang token dari file, lalu Save. |
+| Token 3000+ chars atau pesan "cookie export" | Yang ditempel adalah export cookie, bukan token bridge. Hapus extension lalu load ulang untuk membersihkan storage, lalu paste token 32 karakter. |
 | `extension_offline` | Chrome tertutup atau extension di-pause. Buka Chrome dan cek popup. |
 | `page_not_controllable` | Tab berada di halaman sistem Chrome. Pindah ke http atau https. |
 | `origin_not_allowed` | Origin tidak ada di allowlist extension options. |

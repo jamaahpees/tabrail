@@ -56,6 +56,16 @@ const optionsLink = byId<HTMLAnchorElement>("options-link");
 let editingToken = false;
 let targetSignature = "";
 
+function tokenProblem(value: string): string | null {
+  const token = value.trim();
+  if (!token) return "Paste the bridge token first.";
+  if (token.length > 200 || /\s/.test(token) || /[{}\[\]"]/.test(token)) {
+    return "That looks like a cookie export or JSON. Use the short bridge token from the server, not a site session.";
+  }
+  if (token.length < 8) return "That token is too short. Copy the whole token file.";
+  return null;
+}
+
 function hostOf(url: string): string {
   try {
     return new URL(url).host;
@@ -195,8 +205,9 @@ async function refresh(): Promise<void> {
 
 saveButton?.addEventListener("click", () => {
   const value = tokenInput?.value.trim() ?? "";
-  if (!value) {
-    setFeedback("Paste a token first.");
+  const problem = tokenProblem(value);
+  if (problem) {
+    setFeedback(problem);
     tokenInput?.focus();
     return;
   }
