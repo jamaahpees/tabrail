@@ -1,0 +1,31 @@
+{
+  "name": "mcp-remote-chrome-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Control your real Chrome browser from any MCP client through a local bridge and a Manifest V3 extension.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jamaahpees/mcp-remote-chrome-extension.git"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "npm run build --workspace @mcp-remote-chrome/server && npm run build --workspace @mcp-remote-chrome/extension",
+    "typecheck": "tsc -p packages/server/tsconfig.json --noEmit && tsc -p packages/extension/tsconfig.json --noEmit",
+    "test": "npm run build && node --test tests/mcp.test.mjs tests/e2e.test.mjs",
+    "start": "node packages/server/dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "puppeteer-core": "^25.16.0",
+    "typescript": "~5.9.3"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

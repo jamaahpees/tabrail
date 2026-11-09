@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Remote Browser Bridge</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="popup">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <h1>Remote Browser</h1>
+          <p class="subtitle">Local MCP bridge</p>
+        </div>
+      </div>
+      <span id="status-pill" class="pill" data-state="disconnected">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="status-text">Connecting</span>
+      </span>
+    </header>
+
+    <main>
+      <section class="card" aria-labelledby="conn-title">
+        <h2 id="conn-title">Connection</h2>
+        <p id="status-detail" class="hint">Checking the local bridge.</p>
+
+        <div class="field">
+          <label for="token">Bridge token</label>
+          <div class="row">
+            <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the token from the server" />
+            <button id="save" class="btn btn-primary" type="button">Save</button>
+          </div>
+        </div>
+
+        <div class="row space">
+          <label class="switch" for="enabled">
+            <input id="enabled" type="checkbox" />
+            <span>Allow control</span>
+          </label>
+          <button id="reconnect" class="btn" type="button">Reconnect</button>
+        </div>
+
+        <p id="save-feedback" class="hint feedback" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="card" aria-labelledby="tab-title">
+        <h2 id="tab-title">Active tab</h2>
+        <p id="tab-name" class="tab-name">No active tab</p>
+        <p id="tab-url" class="tab-url">Focus a normal web page to let the agent read it.</p>
+      </section>
+
+      <section class="card" aria-labelledby="activity-title">
+        <h2 id="activity-title">Recent calls</h2>
+        <ul id="activity" class="activity">
+          <li class="empty">No calls yet.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>
+      <a href="#" id="options-link">Options</a>
+      <span id="version" class="version"></span>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SPA Fixture</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        padding: 32px;
+        background: #f4f1ea;
+        color: #221f1a;
+      }
+      li {
+        margin: 6px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SPA fixture</h1>
+    <p><a id="back" href="/index.html">Back to checkout</a></p>
+    <button id="rerender" type="button">Re-render list</button>
+    <ul id="list" aria-label="Products"></ul>
+
+    <script>
+      let round = 0;
+      const list = document.getElementById("list");
+
+      function render() {
+        round += 1;
+        list.replaceChildren();
+        for (let index = 0; index < 3; index += 1) {
+          const item = document.createElement("li");
+          const label = document.createElement("span");
+          label.textContent = `Round ${round} product ${index + 1}`;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = `Select product ${index + 1} round ${round}`;
+          button.addEventListener("click", () => {
+            document.title = `Selected ${index + 1} in round ${round}`;
+          });
+          item.append(label, button);
+          list.append(item);
+        }
+      }
+
+      document.getElementById("rerender").addEventListener("click", render);
+      render();
+    </script>
+  </body>
+</html>

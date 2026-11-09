@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Remote Browser Bridge options</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="options">
+    <main class="page">
+      <header class="page-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>Remote Browser Bridge</h1>
+            <p class="subtitle">Connect Chrome to a local MCP server.</p>
+          </div>
+        </div>
+        <span id="status-pill" class="pill" data-state="disconnected">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="status-text">Checking</span>
+        </span>
+      </header>
+
+      <section class="card" aria-labelledby="bridge-title">
+        <h2 id="bridge-title">Bridge</h2>
+
+        <div class="field">
+          <label for="port">Bridge port</label>
+          <input id="port" type="number" min="1" max="65535" step="1" inputmode="numeric" />
+          <p class="hint">Default is 8765. Change it only if the MCP server uses MCP_BROWSER_PORT.</p>
+        </div>
+
+        <div class="field">
+          <label for="token">Bridge token</label>
+          <div class="row">
+            <input id="token" type="password" autocomplete="off" spellcheck="false" />
+            <button id="reveal" class="btn" type="button">Show</button>
+          </div>
+          <p class="hint">
+            The MCP server writes this token to the user config folder on first run. The extension and the server must
+            use the same value.
+          </p>
+        </div>
+
+        <div class="field">
+          <label class="switch" for="enabled">
+            <input id="enabled" type="checkbox" />
+            <span>Allow the agent to control tabs</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="allow-title">
+        <h2 id="allow-title">Allowed origins</h2>
+        <div class="field">
+          <label for="allowlist">Origins, one per line</label>
+          <textarea id="allowlist" rows="5" spellcheck="false" placeholder="https://app.example.com&#10;http://localhost:3000"></textarea>
+          <p class="hint">Leave empty to allow every http and https page. Chrome system pages are always blocked.</p>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="save" class="btn btn-primary" type="button">Save settings</button>
+        <button id="test" class="btn" type="button">Test connection</button>
+        <span id="feedback" class="hint feedback" role="status" aria-live="polite"></span>
+      </div>
+
+      <section class="card" aria-labelledby="ref-title">
+        <h2 id="ref-title">Client configuration</h2>
+        <p class="hint">
+          Point your MCP client at the server entry point. In OpenCode it looks like this, with the absolute path to
+          this repository:
+        </p>
+        <pre id="snippet" class="snippet"></pre>
+      </section>
+    </main>
+
+    <script src="options.js"></script>
+  </body>
+</html>

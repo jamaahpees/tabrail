@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Checkout Fixture</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 32px;
+        background: #f4f1ea;
+        color: #221f1a;
+      }
+      main {
+        max-width: 560px;
+      }
+      label {
+        display: block;
+        margin: 12px 0 4px;
+        font-weight: 600;
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        padding: 8px;
+      }
+      #result {
+        padding: 10px 12px;
+        background: #fffdf8;
+        border: 1px solid #d9d2c4;
+      }
+      #editor {
+        border: 1px solid #d9d2c4;
+        padding: 10px;
+        margin-top: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Checkout fixture</h1>
+    </header>
+    <main>
+      <form id="form">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" placeholder="you@example.com" />
+
+        <label for="promo">Promo code</label>
+        <input id="promo" name="promo" />
+        <button id="apply" type="button" disabled>Apply code</button>
+        <p id="result" role="status">No code applied.</p>
+
+        <label for="carrier">Carrier</label>
+        <select id="carrier" name="carrier">
+          <option value="jne">JNE Reguler</option>
+          <option value="sicepat">SiCepat</option>
+          <option value="anteraja">AnterAja</option>
+        </select>
+
+        <button id="submit" type="submit">Place order</button>
+      </form>
+
+      <p><button id="enable" type="button">Enable apply</button></p>
+      <p><button id="alert" type="button">Show confirm</button></p>
+      <p><a id="next" href="/spa.html">Next page</a></p>
+
+      <div id="list" aria-label="Items"></div>
+      <div id="editor" contenteditable="true" role="textbox" aria-label="Note">Hello</div>
+    </main>
+
+    <script>
+      window.fixtureReady = true;
+      console.log("fixture loaded");
+
+      document.getElementById("enable").addEventListener("click", () => {
+        document.getElementById("apply").disabled = false;
+      });
+
+      document.getElementById("apply").addEventListener("click", () => {
+        const code = document.getElementById("promo").value.trim().toUpperCase();
+        document.getElementById("result").textContent =
+          code === "SAVE10" ? "Code applied: 10% off." : "Code rejected.";
+      });
+
+      document.getElementById("form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        document.getElementById("result").textContent =
+          "Order placed for " + document.getElementById("email").value;
+      });
+
+      document.getElementById("alert").addEventListener("click", () => {
+        const accepted = confirm("Continue with the test order?");
+        document.getElementById("result").textContent = accepted ? "Confirmed." : "Cancelled.";
+      });
+
+      const list = document.getElementById("list");
+      for (const name of ["Kaos Hitam", "Jaket Olive", "Topi Kanvas"]) {
+        const item = document.createElement("li");
+        item.textContent = name;
+        list.append(item);
+      }
+    </script>
+  </body>
+</html>

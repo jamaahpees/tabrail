@@ -1,0 +1,14 @@
+{
+  "name": "@mcp-remote-chrome/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Manifest V3 extension that exposes Chrome tabs to the local MCP bridge.",
+  "scripts": {
+    "build": "node scripts/make-icons.mjs && node build.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.7",
+    "esbuild": "^0.28.2"
+  }
+}
