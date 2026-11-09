@@ -86,6 +86,15 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 function setStatus(state: ExtensionStatus["state"], detail?: string): void {
   status = { state, detail, updatedAt: new Date().toISOString() };
+  updateBadge();
+}
+
+function updateBadge(): void {
+  const text =
+    status.state === "connected" ? "ON" : status.state === "error" ? "!" : status.state === "disabled" ? "" : "…";
+  const color = status.state === "connected" ? "#1c6f4a" : status.state === "error" ? "#a33a2b" : "#8a5a12";
+  void chrome.action.setBadgeText({ text });
+  void chrome.action.setBadgeBackgroundColor({ color });
 }
 
 function record(method: string, ok: boolean, ms: number, code?: string): void {
@@ -118,6 +127,21 @@ function connect(reason: string): Promise<void> {
   return connectQueue;
 }
 
+async function pairWithBridge(port: number): Promise<string | null> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/pair`, {
+      method: "POST",
+      cache: "no-store",
+      credentials: "omit",
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { token?: unknown };
+    return typeof data.token === "string" && data.token.length > 0 ? data.token : null;
+  } catch {
+    return null;
+  }
+}
+
 async function doConnect(reason: string): Promise<void> {
   const current = await getSettings();
   settings = current;
@@ -129,10 +153,21 @@ async function doConnect(reason: string): Promise<void> {
     setStatus("disabled", "Extension control is turned off.");
     return;
   }
+
   if (!current.token) {
-    setStatus("error", "No token set. Open the extension options and paste the bridge token.");
-    scheduleReconnect();
-    return;
+    const paired = await pairWithBridge(current.port);
+    if (paired) {
+      current.token = paired;
+      settings = await saveSettings({ token: paired });
+      setStatus("connecting", "Paired with the local bridge.");
+    } else {
+      setStatus(
+        "error",
+        "No token set. Paste the bridge token in the popup, or start the bridge with local pairing enabled.",
+      );
+      scheduleReconnect();
+      return;
+    }
   }
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return;

@@ -80,7 +80,7 @@ export async function startFixtureServer() {
   };
 }
 
-export async function startBridge({ port, token }) {
+export async function startBridge({ port, token, extraEnv = {} }) {
   const home = await mkdtemp(join(tmpdir(), "mcp-bridge-home-"));
   const child = spawn(process.execPath, [BRIDGE_ENTRY], {
     env: {
@@ -88,6 +88,7 @@ export async function startBridge({ port, token }) {
       MCP_BROWSER_PORT: String(port),
       MCP_BROWSER_TOKEN: token,
       MCP_BROWSER_HOME: home,
+      ...extraEnv,
     },
     stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,

@@ -5,9 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { MCP_ENTRY, stopBridgeByPort } from "./helpers.mjs";
+import { MCP_ENTRY, startBridge, stopBridgeByPort } from "./helpers.mjs";
 
 const PORT = 8797;
+const PAIR_PORT = 8796;
+const PAIR_TOKEN = "pair-token-0123456789abcdef0123456789";
 
 function transport(extraEnv) {
   const env = {};
@@ -63,4 +65,30 @@ test("MCP server lists tools and reports an offline extension", async (t) => {
   const snapshotSchema = tools.tools.find((tool) => tool.name === "browser_snapshot");
   assert.ok(snapshotSchema.inputSchema);
   assert.ok(snapshotSchema.inputSchema.properties.mode);
+});
+
+test("local pairing only answers extension origins", async (t) => {
+  const bridge = await startBridge({
+    port: PAIR_PORT,
+    token: PAIR_TOKEN,
+    extraEnv: { MCP_BROWSER_ALLOW_LOCAL_PAIRING: "1" },
+  });
+  t.after(() => bridge.stop());
+
+  const allowed = await fetch(`http://127.0.0.1:${PAIR_PORT}/pair`, {
+    method: "POST",
+    headers: { origin: "chrome-extension://cgiclackdhpeikhbfdnokhjoejijjkdp" },
+  });
+  assert.equal(allowed.status, 200);
+  const payload = await allowed.json();
+  assert.equal(payload.token, PAIR_TOKEN);
+
+  const denied = await fetch(`http://127.0.0.1:${PAIR_PORT}/pair`, { method: "POST" });
+  assert.equal(denied.status, 403);
+
+  const webOrigin = await fetch(`http://127.0.0.1:${PAIR_PORT}/pair`, {
+    method: "POST",
+    headers: { origin: "https://evil.example" },
+  });
+  assert.equal(webOrigin.status, 403);
 });

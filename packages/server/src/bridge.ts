@@ -17,6 +17,17 @@ const ALLOW_EVAL = process.env.MCP_BROWSER_ALLOW_EVAL === "1";
 const HEARTBEAT_MS = 20_000;
 const HELLO_TIMEOUT_MS = 5_000;
 const MAX_PENDING_PER_CLIENT = 32;
+const ALLOW_PAIRING = process.env.MCP_BROWSER_ALLOW_LOCAL_PAIRING === "1";
+const PAIR_ORIGINS = (process.env.MCP_BROWSER_PAIR_ORIGINS ?? "")
+  .split(",")
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+
+function pairOriginAllowed(origin: string): boolean {
+  if (!ALLOW_PAIRING) return false;
+  if (!/^chrome-extension:\/\/[a-p]{32}$/.test(origin)) return false;
+  return PAIR_ORIGINS.length === 0 || PAIR_ORIGINS.includes(origin);
+}
 
 interface PendingCall {
   client: WebSocket;
@@ -25,9 +36,17 @@ interface PendingCall {
   timer: NodeJS.Timeout;
 }
 
+interface HelloAttempt {
+  at: string;
+  role: string;
+  tokenLength: number;
+  ok: boolean;
+}
+
 let extensionSocket: WebSocket | null = null;
 const clients = new Set<WebSocket>();
 const pending = new Map<string, PendingCall>();
+const helloAttempts: HelloAttempt[] = [];
 let sequence = 0;
 
 function log(message: string): void {
@@ -137,6 +156,43 @@ function parse(raw: RawData): unknown {
 }
 
 const server = createServer((request, response) => {
+  const origin = request.headers.origin ?? "";
+
+  if (request.url === "/pair") {
+    if (request.method === "OPTIONS") {
+      if (!pairOriginAllowed(origin)) {
+        response.writeHead(403).end();
+        return;
+      }
+      response.writeHead(204, {
+        "access-control-allow-origin": origin,
+        "access-control-allow-methods": "POST, OPTIONS",
+        "access-control-allow-headers": "content-type",
+        "access-control-max-age": "600",
+        vary: "origin",
+      });
+      response.end();
+      return;
+    }
+
+    if (request.method === "POST") {
+      if (!pairOriginAllowed(origin)) {
+        response.writeHead(403, { "content-type": "application/json" });
+        response.end('{"error":"pairing_disabled"}\n');
+        return;
+      }
+      log(`paired extension ${origin}`);
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "access-control-allow-origin": origin,
+        "cache-control": "no-store",
+        vary: "origin",
+      });
+      response.end(JSON.stringify({ token: TOKEN, port: PORT, version: BRIDGE_VERSION }));
+      return;
+    }
+  }
+
   if (request.url === "/health") {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(
@@ -149,6 +205,7 @@ const server = createServer((request, response) => {
         clients: clients.size,
         pending: pending.size,
         uptimeSeconds: Math.round(process.uptime()),
+        helloAttempts: helloAttempts.slice(-8),
       }),
     );
     return;
@@ -182,7 +239,17 @@ wss.on("connection", (socket: WebSocket) => {
       const hello = data as HelloMessage;
       if (typeof hello.token !== "string") return;
       authAttempts += 1;
-      if (!tokenMatches(hello.token)) {
+      const ok = tokenMatches(hello.token);
+      helloAttempts.push({
+        at: new Date().toISOString(),
+        role: String(hello.role),
+        tokenLength: hello.token.length,
+        ok,
+      });
+      if (helloAttempts.length > 20) helloAttempts.shift();
+
+      if (!ok) {
+        log(`rejected ${hello.role} hello with token length ${hello.token.length}`);
         if (authAttempts >= 3) socket.close(4403, "invalid token");
         send(socket, {
           kind: "reject",
