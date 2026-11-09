@@ -18,6 +18,7 @@
     "build": "npm run build --workspace @mcp-remote-chrome/server && npm run build --workspace @mcp-remote-chrome/extension",
     "typecheck": "tsc -p packages/server/tsconfig.json --noEmit && tsc -p packages/extension/tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/mcp.test.mjs tests/e2e.test.mjs",
+    "screenshots": "node tests/visual-check.mjs",
     "start": "node packages/server/dist/index.js"
   },
   "devDependencies": {

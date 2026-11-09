@@ -35,9 +35,19 @@ test("drives a real Chrome tab through the bridge", async (t) => {
     await fixture.close();
   });
 
-  await configureExtension(browser, extensionId, { port: PORT, token: TOKEN });
+  const optionsPage = await configureExtension(browser, extensionId, { port: PORT, token: TOKEN });
   const client = await connectClient(PORT, TOKEN);
   t.after(() => client.close());
+
+  await optionsPage.click("#reveal");
+  assert.equal(await optionsPage.$eval("#token", (element) => element.type), "text");
+  await optionsPage.click("#reveal");
+  assert.equal(await optionsPage.$eval("#token", (element) => element.type), "password");
+  await optionsPage.click("#test");
+  await optionsPage.waitForFunction(
+    () => /Bridge connected/.test(document.querySelector("#feedback")?.textContent ?? ""),
+    { timeout: 15_000 },
+  );
 
   await waitUntil(() => client.ready?.extensionConnected, 25_000, "extension connection");
 
@@ -167,10 +177,35 @@ test("drives a real Chrome tab through the bridge", async (t) => {
 
   const popup = await browser.newPage();
   await popup.goto(`chrome-extension://${extensionId}/popup.html`, { waitUntil: "domcontentloaded" });
+  await popup.waitForSelector("#token");
+  await popup.type("#token", TOKEN);
+  await popup.click("#save");
   await popup.waitForFunction(
-    () => document.querySelector("#status-text")?.textContent === "Connected",
+    () => /Token saved/.test(document.querySelector("#save-feedback")?.textContent ?? ""),
     { timeout: 10_000 },
   );
+  await popup.waitForFunction(
+    () => document.querySelector("#status-text")?.textContent === "Connected",
+    { timeout: 15_000 },
+  );
+
+  await popup.click("#enabled");
+  await popup.waitForFunction(
+    () => document.querySelector("#status-text")?.textContent === "Paused",
+    { timeout: 10_000 },
+  );
+  await popup.click("#enabled");
+  await popup.waitForFunction(
+    () => document.querySelector("#status-text")?.textContent === "Connected",
+    { timeout: 15_000 },
+  );
+
+  await popup.click("#reconnect");
+  await popup.waitForFunction(
+    () => document.querySelector("#status-text")?.textContent === "Connected",
+    { timeout: 15_000 },
+  );
+
   const pillState = await popup.$eval("#status-pill", (element) => element.dataset.state);
   assert.equal(pillState, "connected");
 });

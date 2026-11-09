@@ -222,6 +222,7 @@ tests/             mcp.test.mjs, e2e.test.mjs
 | `cdp_unavailable` | DevTools sedang terbuka di tab itu, atau diblokir kebijakan enterprise. Tutup DevTools. |
 | `stale_ref` | DOM berubah. Ambil `browser_snapshot` baru. |
 | `injection_blocked` | Halaman memblokir content script, biasanya Chrome Web Store. |
+| `npm run build` gagal karena esbuild | npm 11 memblokir postinstall. Jalankan `npm approve-scripts esbuild` lalu `npm rebuild esbuild`. |
 | Port bentrok atau token ditolak | Ada bridge lain di port yang sama. Hentikan prosesnya atau ganti `MCP_BROWSER_PORT`. |
 
 ## Lisensi

@@ -176,6 +176,24 @@ function scheduleReconnect(): void {
   }, delay);
 }
 
+let forceReconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+function requestReconnect(reason: string): void {
+  if (forceReconnectTimer) clearTimeout(forceReconnectTimer);
+  forceReconnectTimer = setTimeout(() => {
+    forceReconnectTimer = undefined;
+    void reconnectNow(reason);
+  }, 150);
+}
+
+async function reconnectNow(reason: string): Promise<void> {
+  const previous = socket;
+  socket = null;
+  reconnectAttempts = 0;
+  if (previous) previous.close(1000, "reconnecting");
+  await connect(reason);
+}
+
 async function onBridgeMessage(raw: unknown): Promise<void> {
   let message: BridgeToExtension;
   try {
@@ -878,10 +896,8 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   }
 
   if (type === "popup:reconnect") {
-    void (async () => {
-      await connect("manual");
-      sendResponse({ ok: true });
-    })();
+    requestReconnect("manual");
+    sendResponse({ ok: true });
     return true;
   }
 
@@ -889,7 +905,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     const patch = (message as { patch?: Partial<Settings> }).patch ?? {};
     void (async () => {
       settings = await saveSettings(patch);
-      await connect("settings saved");
+      requestReconnect("settings saved");
       sendResponse({ ok: true, settings: { port: settings.port, enabled: settings.enabled } });
     })();
     return true;
@@ -904,7 +920,7 @@ chrome.storage.onChanged.addListener((_changes, area) => {
     const current = await getSettings();
     const reconnectNeeded = current.token !== settings.token || current.port !== settings.port || current.enabled !== settings.enabled;
     settings = current;
-    if (reconnectNeeded) await connect("settings changed");
+    if (reconnectNeeded) requestReconnect("settings changed");
   })();
 });
 
