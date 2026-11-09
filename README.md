@@ -161,6 +161,16 @@ Model menerima pohon semantik yang ringkas:
 
 Mode `diff` hanya mengirim node yang berubah sejak snapshot sebelumnya, dan `interactive` menyaring ke elemen yang bisa diapa-apakan. Ref yang sudah tidak valid dikembalikan sebagai error `stale_ref`, bukan klik ke elemen yang salah.
 
+### Memilih tab target
+
+Popup extension menampilkan daftar tab yang terbuka. Klik satu tab untuk mengunci target, atau biarkan **Follow active tab** aktif. Urutan pemilihan:
+
+1. `tabId` yang dikirim tool, kalau ada.
+2. Tab yang dipilih di popup.
+3. Tab aktif, kalau tidak ada yang dipilih.
+
+Kalau tab yang dipilih ditutup, extension otomatis kembali ke mode follow active tab. Popup juga menampilkan alamat bridge dan panjang token, jadi kamu bisa membedakan masalah token dengan masalah koneksi.
+
 ## Keamanan
 
 - Bridge hanya listen di `127.0.0.1`, tidak pernah ke jaringan.
@@ -169,6 +179,7 @@ Mode `diff` hanya mengirim node yang berubah sejak snapshot sebelumnya, dan `int
 - Allowlist origin di halaman options kosong berarti semua situs http/https diizinkan. Isi allowlist kalau kamu ingin membatasi.
 - Permission `debugger` memunculkan peringatan saat instalasi. CDP hanya dipasang saat tool console, network, screenshot, dialog, atau `trusted` click dipanggil, lalu dilepas setelah 30 detik idle.
 - Tool `browser_evaluate` mati secara default karena itu jalur paling berbahaya.
+- Extension tidak membaca, mengekspor, atau mengirim cookie situs. Session tetap di Chrome, dan agent hanya melihat DOM tab yang dipilih. Tidak ada fitur cookie sync, dan memang tidak dibutuhkan untuk kontrol browser.
 
 Extension ini memberi agent kontrol penuh atas tab yang diizinkan. Jangan pasang di profil Chrome yang kamu pakai untuk perbankan atau data sensitif tanpa allowlist.
 
@@ -215,7 +226,9 @@ tests/             mcp.test.mjs, e2e.test.mjs
 | Gejala | Penyebab dan solusi |
 | --- | --- |
 | Status **Waiting** terus | Bridge belum jalan. Buka MCP client atau jalankan `node packages/server/dist/index.js`. |
-| Status **Needs attention** | Token di extension berbeda dengan file token. Salin ulang. |
+| Status **Needs attention** | Token di extension berbeda dengan file token. Salin ulang, lalu lihat detail di popup. |
+| Extension tidak muncul di `chrome://extensions` | Folder yang dipilih salah atau Chrome memakai profil lain. Pilih `packages/extension/dist` yang berisi `manifest.json`. |
+| Popup menampilkan token 0 chars | Token belum tersimpan. Paste ulang token dari file, lalu Save. |
 | `extension_offline` | Chrome tertutup atau extension di-pause. Buka Chrome dan cek popup. |
 | `page_not_controllable` | Tab berada di halaman sistem Chrome. Pindah ke http atau https. |
 | `origin_not_allowed` | Origin tidak ada di allowlist extension options. |

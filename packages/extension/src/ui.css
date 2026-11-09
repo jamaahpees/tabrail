@@ -235,6 +235,100 @@ main {
   min-height: 15px;
 }
 
+.mono {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.card-head h2 {
+  margin-bottom: 0;
+}
+
+.btn-small {
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 11px;
+}
+
+.tabs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.tabs .empty {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 6px 2px;
+}
+
+.tab-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tab-row:hover {
+  background: var(--surface-strong);
+}
+
+.tab-row[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.tab-label {
+  display: grid;
+  min-width: 0;
+}
+
+.tab-title {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-host {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-mark {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
 .field {
   margin-top: 12px;
 }

@@ -16,7 +16,12 @@ export interface ConfigEnvelope {
   allowEval: boolean;
 }
 
-export type BridgeToExtension = CallEnvelope | ConfigEnvelope | { kind: "ping" };
+export interface RejectEnvelope {
+  kind: "reject";
+  error: ToolErrorPayload;
+}
+
+export type BridgeToExtension = CallEnvelope | ConfigEnvelope | RejectEnvelope | { kind: "ping" };
 
 export type ExtensionToBridge =
   | { kind: "result"; id: string; ok: true; result: unknown }

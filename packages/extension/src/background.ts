@@ -72,9 +72,10 @@ let socket: WebSocket | null = null;
 let status: ExtensionStatus = { state: "disconnected", updatedAt: new Date().toISOString() };
 let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-let reconnectRunning = false;
+let connectQueue: Promise<void> = Promise.resolve();
 let allowEval = false;
 let activity: Activity[] = [];
+let rejectedDetail: string | null = null;
 
 const consoleBuffers = new Map<number, ConsoleEntry[]>();
 const networkBuffers = new Map<number, NetworkEntry[]>();
@@ -108,62 +109,73 @@ function send(message: ExtensionToBridge): void {
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
-async function connect(reason: string): Promise<void> {
-  if (reconnectRunning) return;
-  reconnectRunning = true;
-  try {
-    const current = await getSettings();
-    settings = current;
-
-    if (!current.enabled) {
-      setStatus("disabled", "Extension control is turned off.");
-      return;
-    }
-    if (!current.token) {
-      setStatus("error", "No token set. Open the extension options and paste the bridge token.");
-      scheduleReconnect();
-      return;
-    }
-    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-
-    setStatus("connecting", `Trying 127.0.0.1:${current.port} (${reason}).`);
-    const ws = new WebSocket(`ws://127.0.0.1:${current.port}`);
-    socket = ws;
-
-    ws.addEventListener("open", () => {
-      if (socket !== ws) return;
-      ws.send(
-        JSON.stringify({
-          kind: "hello",
-          role: "extension",
-          token: current.token,
-          version: EXTENSION_VERSION,
-          browser: navigator.userAgent,
-        }),
-      );
-      reconnectAttempts = 0;
-      setStatus("connected");
+function connect(reason: string): Promise<void> {
+  connectQueue = connectQueue
+    .then(() => doConnect(reason))
+    .catch((error: unknown) => {
+      setStatus("error", error instanceof Error ? error.message : String(error));
     });
+  return connectQueue;
+}
 
-    ws.addEventListener("message", (event) => {
-      void onBridgeMessage(event.data);
-    });
+async function doConnect(reason: string): Promise<void> {
+  const current = await getSettings();
+  settings = current;
 
-    ws.addEventListener("close", () => {
-      if (socket !== ws) return;
-      socket = null;
-      setStatus("disconnected", "The local bridge is not reachable yet.");
-      scheduleReconnect();
-    });
-
-    ws.addEventListener("error", () => {
-      // The close event follows and schedules the retry.
-    });
-  } finally {
-    reconnectRunning = false;
+  if (!current.enabled) {
+    const previous = socket;
+    socket = null;
+    if (previous) previous.close(1000, "disabled");
+    setStatus("disabled", "Extension control is turned off.");
+    return;
   }
+  if (!current.token) {
+    setStatus("error", "No token set. Open the extension options and paste the bridge token.");
+    scheduleReconnect();
+    return;
+  }
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+
+  setStatus("connecting", `Trying 127.0.0.1:${current.port} (${reason}).`);
+  const ws = new WebSocket(`ws://127.0.0.1:${current.port}`);
+  socket = ws;
+
+  ws.addEventListener("open", () => {
+    if (socket !== ws) return;
+    ws.send(
+      JSON.stringify({
+        kind: "hello",
+        role: "extension",
+        token: current.token,
+        version: EXTENSION_VERSION,
+        browser: navigator.userAgent,
+      }),
+    );
+    reconnectAttempts = 0;
+    rejectedDetail = null;
+    setStatus("connected");
+  });
+
+  ws.addEventListener("message", (event) => {
+    void onBridgeMessage(event.data);
+  });
+
+  ws.addEventListener("close", () => {
+    if (socket !== ws) return;
+    socket = null;
+    if (rejectedDetail) {
+      setStatus("error", rejectedDetail);
+    } else {
+      setStatus("disconnected", "The local bridge is not reachable yet. Start an MCP client or check the port.");
+    }
+    scheduleReconnect();
+  });
+
+  ws.addEventListener("error", () => {
+    // The close event follows and schedules the retry.
+  });
 }
 
 function scheduleReconnect(): void {
@@ -190,6 +202,7 @@ async function reconnectNow(reason: string): Promise<void> {
   const previous = socket;
   socket = null;
   reconnectAttempts = 0;
+  rejectedDetail = null;
   if (previous) previous.close(1000, "reconnecting");
   await connect(reason);
 }
@@ -208,6 +221,14 @@ async function onBridgeMessage(raw: unknown): Promise<void> {
   }
   if (message.kind === "config") {
     allowEval = message.allowEval;
+    return;
+  }
+  if (message.kind === "reject") {
+    rejectedDetail = message.error.hint
+      ? `${message.error.message} ${message.error.hint}`
+      : message.error.message;
+    setStatus("error", rejectedDetail);
+    socket?.close(4001, "rejected");
     return;
   }
   if (message.kind === "call") {
@@ -280,11 +301,34 @@ async function requireTab(params: Record<string, unknown>): Promise<chrome.tabs.
       throw new ActionError("tab_not_found", `Tab ${tabId} no longer exists.`);
     }
   }
+
+  const pinned = settings.pinnedTabId;
+  if (typeof pinned === "number") {
+    try {
+      return await chrome.tabs.get(pinned);
+    } catch {
+      settings = await saveSettings({ pinnedTabId: null });
+    }
+  }
+
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id) {
     throw new ActionError("no_active_tab", "No active tab found.", "Focus a Chrome window with a normal web page open.");
   }
   return tab;
+}
+
+async function currentTargetTab(): Promise<chrome.tabs.Tab | null> {
+  const pinned = settings.pinnedTabId;
+  if (typeof pinned === "number") {
+    try {
+      return await chrome.tabs.get(pinned);
+    } catch {
+      settings = await saveSettings({ pinnedTabId: null });
+    }
+  }
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  return tab ?? null;
 }
 
 function assertControllable(tab: chrome.tabs.Tab): void {
@@ -668,13 +712,14 @@ async function evaluate(params: Record<string, unknown>): Promise<unknown> {
 }
 
 async function extensionStatus(): Promise<unknown> {
-  const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const target = await currentTargetTab();
   return {
     extensionVersion: EXTENSION_VERSION,
     bridge: { state: status.state, detail: status.detail, updatedAt: status.updatedAt },
-    activeTab: active
-      ? { tabId: active.id, title: active.title, url: active.url, windowId: active.windowId }
+    activeTab: target
+      ? { tabId: target.id, title: target.title, url: target.url, windowId: target.windowId }
       : null,
+    pinnedTabId: settings.pinnedTabId,
     debuggerAttachedTabs: [...attachedTabs.keys()],
     pendingDialogs: [...pendingDialogs.entries()].map(([tabId, dialog]) => ({ tabId, ...dialog })),
     allowEval,
@@ -877,18 +922,39 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   pendingDialogs.delete(tabId);
 });
 
-chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id) return undefined;
   const type = (message as { type?: string } | null)?.type;
 
   if (type === "popup:status") {
     void (async () => {
-      const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const target = await currentTargetTab();
+      const allTabs = await chrome.tabs.query({});
+      const tabs = allTabs
+        .filter((tab) => tab.id !== undefined && /^https?:/i.test(tab.url ?? ""))
+        .slice(0, 15)
+        .map((tab) => ({
+          tabId: tab.id,
+          title: tab.title ?? tab.url ?? "Untitled",
+          url: tab.url ?? "",
+          active: tab.active,
+        }));
+
       sendResponse({
         status,
         activity,
         allowEval,
-        settings: { port: settings.port, enabled: settings.enabled, allowlist: settings.allowlist, hasToken: Boolean(settings.token) },
-        activeTab: active ? { tabId: active.id, title: active.title, url: active.url } : null,
+        settings: {
+          port: settings.port,
+          enabled: settings.enabled,
+          allowlist: settings.allowlist,
+          hasToken: Boolean(settings.token),
+          pinnedTabId: settings.pinnedTabId,
+        },
+        bridgeUrl: `ws://127.0.0.1:${settings.port}`,
+        tokenLength: settings.token.length,
+        tabs,
+        activeTab: target ? { tabId: target.id, title: target.title, url: target.url } : null,
         version: EXTENSION_VERSION,
       });
     })();
@@ -904,8 +970,11 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   if (type === "popup:save") {
     const patch = (message as { patch?: Partial<Settings> }).patch ?? {};
     void (async () => {
+      const before = settings;
       settings = await saveSettings(patch);
-      requestReconnect("settings saved");
+      const needsReconnect =
+        before.token !== settings.token || before.port !== settings.port || before.enabled !== settings.enabled;
+      if (needsReconnect) requestReconnect("settings saved");
       sendResponse({ ok: true, settings: { port: settings.port, enabled: settings.enabled } });
     })();
     return true;
@@ -924,8 +993,9 @@ chrome.storage.onChanged.addListener((_changes, area) => {
   })();
 });
 
-chrome.alarms.create("keepalive", { periodInMinutes: 0.5 });
-chrome.alarms.onAlarm.addListener((alarm) => {
+void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+
+chrome.alarms.create("keepalive", { periodInMinutes: 0.5 });chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== "keepalive") return;
   if (!socket || socket.readyState === WebSocket.CLOSED) {
     void connect("alarm");

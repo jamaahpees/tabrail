@@ -24,6 +24,30 @@ function isPng(base64) {
   return buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 }
 
+async function clickInPage(page, selector) {
+  const clicked = await page.evaluate((target) => {
+    const element = document.querySelector(target);
+    if (!element) return false;
+    element.click();
+    return true;
+  }, selector);
+  assert.ok(clicked, `selector ${selector} was not found`);
+}
+
+async function setField(page, selector, value) {
+  const ok = await page.evaluate(
+    ({ target, next }) => {
+      const element = document.querySelector(target);
+      if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) return false;
+      element.value = next;
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      return true;
+    },
+    { target: selector, next: value },
+  );
+  assert.ok(ok, `field ${selector} was not found`);
+}
+
 test("drives a real Chrome tab through the bridge", async (t) => {
   const fixture = await startFixtureServer();
   const bridge = await startBridge({ port: PORT, token: TOKEN });
@@ -39,15 +63,10 @@ test("drives a real Chrome tab through the bridge", async (t) => {
   const client = await connectClient(PORT, TOKEN);
   t.after(() => client.close());
 
-  await optionsPage.click("#reveal");
+  await clickInPage(optionsPage, "#reveal");
   assert.equal(await optionsPage.$eval("#token", (element) => element.type), "text");
-  await optionsPage.click("#reveal");
+  await clickInPage(optionsPage, "#reveal");
   assert.equal(await optionsPage.$eval("#token", (element) => element.type), "password");
-  await optionsPage.click("#test");
-  await optionsPage.waitForFunction(
-    () => /Bridge connected/.test(document.querySelector("#feedback")?.textContent ?? ""),
-    { timeout: 15_000 },
-  );
 
   await waitUntil(() => client.ready?.extensionConnected, 25_000, "extension connection");
 
@@ -178,8 +197,8 @@ test("drives a real Chrome tab through the bridge", async (t) => {
   const popup = await browser.newPage();
   await popup.goto(`chrome-extension://${extensionId}/popup.html`, { waitUntil: "domcontentloaded" });
   await popup.waitForSelector("#token");
-  await popup.type("#token", TOKEN);
-  await popup.click("#save");
+  await setField(popup, "#token", TOKEN);
+  await clickInPage(popup, "#save");
   await popup.waitForFunction(
     () => /Token saved/.test(document.querySelector("#save-feedback")?.textContent ?? ""),
     { timeout: 10_000 },
@@ -189,23 +208,65 @@ test("drives a real Chrome tab through the bridge", async (t) => {
     { timeout: 15_000 },
   );
 
-  await popup.click("#enabled");
-  await popup.waitForFunction(
-    () => document.querySelector("#status-text")?.textContent === "Paused",
-    { timeout: 10_000 },
+  const secondPage = await browser.newPage();
+  await secondPage.goto(fixture.url("/index.html"), { waitUntil: "load" });
+
+  const tabsNow = await client.call("tabs", { action: "list" });
+  const spaTab = tabsNow.tabs.find((entry) => entry.url?.includes("/spa.html"));
+  const checkoutTab = tabsNow.tabs.find((entry) => entry.url?.includes("/index.html"));
+  assert.ok(spaTab, "spa tab is listed");
+  assert.ok(checkoutTab, "checkout tab is listed");
+
+  await clickInPage(popup, `[data-tab-id="${spaTab.tabId}"]`);
+  await waitUntil(
+    async () => (await client.call("status")).pinnedTabId === spaTab.tabId,
+    8000,
+    "pinned tab saved",
   );
-  await popup.click("#enabled");
-  await popup.waitForFunction(
-    () => document.querySelector("#status-text")?.textContent === "Connected",
-    { timeout: 15_000 },
+  const pinnedSnapshot = await client.call("snapshot", {});
+  assert.match(pinnedSnapshot.text, /SPA fixture/);
+
+  await clickInPage(popup, '[data-tab-id="auto"]');
+  await secondPage.bringToFront();
+  await waitUntil(
+    async () => (await client.call("status")).pinnedTabId === null,
+    8000,
+    "pin cleared",
+  );
+  await waitUntil(
+    async () => {
+      const snapshot = await client.call("snapshot", {});
+      return /Checkout fixture/.test(snapshot.text) ? snapshot : null;
+    },
+    8000,
+    "active tab follows focus",
   );
 
-  await popup.click("#reconnect");
+  await popup.bringToFront();
+  await clickInPage(popup, "#enabled");
+  await popup.waitForFunction(
+    () => document.querySelector("#status-text")?.textContent === "Paused",
+    { timeout: 10_000, polling: 100 },
+  );
+  await clickInPage(popup, "#enabled");
   await popup.waitForFunction(
     () => document.querySelector("#status-text")?.textContent === "Connected",
-    { timeout: 15_000 },
+    { timeout: 15_000, polling: 100 },
+  );
+
+  await clickInPage(popup, "#reconnect");
+  await popup.waitForFunction(
+    () => document.querySelector("#status-text")?.textContent === "Connected",
+    { timeout: 15_000, polling: 100 },
   );
 
   const pillState = await popup.$eval("#status-pill", (element) => element.dataset.state);
   assert.equal(pillState, "connected");
+
+  await clickInPage(optionsPage, "#test");
+  await optionsPage.waitForFunction(
+    () => /Bridge connected/.test(document.querySelector("#feedback")?.textContent ?? ""),
+    { timeout: 15_000, polling: 100 },
+  );
 });
+

@@ -3,6 +3,7 @@ export interface Settings {
   token: string;
   enabled: boolean;
   allowlist: string[];
+  pinnedTabId: number | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -10,6 +11,7 @@ export const DEFAULT_SETTINGS: Settings = {
   token: "",
   enabled: true,
   allowlist: [],
+  pinnedTabId: null,
 };
 
 export async function getSettings(): Promise<Settings> {
@@ -19,6 +21,7 @@ export async function getSettings(): Promise<Settings> {
     token: typeof stored.token === "string" ? stored.token : DEFAULT_SETTINGS.token,
     enabled: stored.enabled !== false,
     allowlist: Array.isArray(stored.allowlist) ? stored.allowlist.filter((item) => typeof item === "string") : [],
+    pinnedTabId: typeof stored.pinnedTabId === "number" ? stored.pinnedTabId : null,
   };
 }
 
@@ -31,15 +34,26 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
 export function originAllowed(url: string | undefined, allowlist: string[]): boolean {
   if (!url) return false;
   if (allowlist.length === 0) return true;
-  let origin: string;
+
+  let parsed: URL;
   try {
-    origin = new URL(url).origin;
+    parsed = new URL(url);
   } catch {
     return false;
   }
-  return allowlist.some((entry) => {
-    const trimmed = entry.trim();
-    if (!trimmed) return false;
-    return origin === trimmed || origin.startsWith(`${trimmed.replace(/\/$/, "")}`) || origin.endsWith(trimmed);
+
+  return allowlist.some((raw) => {
+    const entry = raw.trim().replace(/\/$/, "");
+    if (!entry) return false;
+
+    if (entry.includes("://")) {
+      try {
+        return new URL(entry).origin === parsed.origin;
+      } catch {
+        return false;
+      }
+    }
+
+    return parsed.hostname === entry || parsed.hostname.endsWith(`.${entry}`);
   });
 }

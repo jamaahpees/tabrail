@@ -244,6 +244,7 @@ export async function launchChrome() {
       "--disable-features=Translate,MediaRouter",
     ],
     defaultViewport: { width: 1280, height: 900 },
+    protocolTimeout: 30_000,
   });
 
   const target = await browser.waitForTarget(
@@ -266,9 +267,11 @@ export async function configureExtension(browser, extensionId, { port, token }) 
     },
     { port, token },
   );
-  await page.click("#save");
-  await page.waitForFunction(
-    () => {
+  await page.evaluate(() => {
+    const button = document.querySelector("#save");
+    if (button instanceof HTMLElement) button.click();
+  });
+  await page.waitForFunction(    () => {
       const feedback = document.querySelector("#feedback");
       return Boolean(feedback && /Saved|Reconnecting/.test(feedback.textContent ?? ""));
     },

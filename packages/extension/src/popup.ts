@@ -5,11 +5,21 @@ interface ActivityEntry {
   summary: string;
 }
 
+interface TabOption {
+  tabId?: number;
+  title: string;
+  url: string;
+  active: boolean;
+}
+
 interface StatusPayload {
   status: { state: string; detail?: string; updatedAt: string };
   activity: ActivityEntry[];
   allowEval: boolean;
-  settings: { port: number; enabled: boolean; allowlist: string[]; hasToken: boolean };
+  settings: { port: number; enabled: boolean; allowlist: string[]; hasToken: boolean; pinnedTabId: number | null };
+  bridgeUrl: string;
+  tokenLength: number;
+  tabs: TabOption[];
   activeTab: { tabId?: number; title?: string; url?: string } | null;
   version: string;
 }
@@ -29,6 +39,7 @@ function byId<T extends HTMLElement>(id: string): T | null {
 const pill = byId<HTMLSpanElement>("status-pill");
 const statusText = byId<HTMLSpanElement>("status-text");
 const statusDetail = byId<HTMLParagraphElement>("status-detail");
+const bridgeMeta = byId<HTMLParagraphElement>("bridge-meta");
 const tokenInput = byId<HTMLInputElement>("token");
 const enabledInput = byId<HTMLInputElement>("enabled");
 const saveButton = byId<HTMLButtonElement>("save");
@@ -36,11 +47,70 @@ const reconnectButton = byId<HTMLButtonElement>("reconnect");
 const feedback = byId<HTMLParagraphElement>("save-feedback");
 const tabName = byId<HTMLParagraphElement>("tab-name");
 const tabUrl = byId<HTMLParagraphElement>("tab-url");
+const targetTabs = byId<HTMLUListElement>("target-tabs");
+const refreshTabsButton = byId<HTMLButtonElement>("refresh-tabs");
 const activityList = byId<HTMLUListElement>("activity");
 const versionLabel = byId<HTMLSpanElement>("version");
 const optionsLink = byId<HTMLAnchorElement>("options-link");
 
 let editingToken = false;
+let targetSignature = "";
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+function buildTargetRow(tabId: number | null, title: string, host: string, selected: boolean): HTMLLIElement {
+  const item = document.createElement("li");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "tab-row";
+  button.dataset["tabId"] = tabId === null ? "auto" : String(tabId);
+  button.setAttribute("aria-pressed", selected ? "true" : "false");
+
+  const label = document.createElement("span");
+  label.className = "tab-label";
+  const strong = document.createElement("span");
+  strong.className = "tab-title";
+  strong.textContent = title;
+  const small = document.createElement("span");
+  small.className = "tab-host";
+  small.textContent = host;
+  label.append(strong, small);
+
+  const mark = document.createElement("span");
+  mark.className = "tab-mark";
+  mark.setAttribute("aria-hidden", "true");
+  mark.textContent = selected ? "Selected" : "";
+
+  button.append(label, mark);
+  item.append(button);
+  return item;
+}
+
+function renderTargetTabs(payload: StatusPayload): void {
+  if (!targetTabs) return;
+  const pinned = payload.settings.pinnedTabId;
+  const signature = `${pinned ?? "auto"}|${(payload.tabs ?? [])
+    .map((tab) => `${tab.tabId}:${tab.title}`)
+    .join("|")}`;
+  if (signature === targetSignature) return;
+  targetSignature = signature;
+
+  targetTabs.replaceChildren();
+  targetTabs.append(
+    buildTargetRow(null, "Follow active tab", "Uses the tab you are focused on", pinned === null),
+  );
+
+  for (const tab of payload.tabs ?? []) {
+    if (typeof tab.tabId !== "number") continue;
+    targetTabs.append(buildTargetRow(tab.tabId, tab.title, hostOf(tab.url), pinned === tab.tabId));
+  }
+}
 
 function setFeedback(message: string): void {
   if (feedback) feedback.textContent = message;
@@ -87,8 +157,13 @@ function render(payload: StatusPayload): void {
     statusDetail.textContent =
       payload.status.detail ??
       (state === "connected"
-        ? `Bridge port ${payload.settings.port}. The agent can control the active tab.`
+        ? `Bridge port ${payload.settings.port}. The agent can control the selected tab.`
         : "Start an MCP client, it launches the bridge automatically.");
+  }
+
+  if (bridgeMeta) {
+    const tokenInfo = payload.tokenLength > 0 ? `token ${payload.tokenLength} chars` : "no token saved";
+    bridgeMeta.textContent = `${payload.bridgeUrl} · ${tokenInfo}`;
   }
 
   if (enabledInput && document.activeElement !== enabledInput) {
@@ -103,6 +178,7 @@ function render(payload: StatusPayload): void {
   if (tabUrl) tabUrl.textContent = payload.activeTab?.url ?? "Focus a normal web page to let the agent read it.";
   if (versionLabel) versionLabel.textContent = `v${payload.version}`;
 
+  renderTargetTabs(payload);
   renderActivity(payload.activity);
 }
 
@@ -167,6 +243,25 @@ enabledInput?.addEventListener("change", () => {
 optionsLink?.addEventListener("click", (event) => {
   event.preventDefault();
   void chrome.runtime.openOptionsPage();
+});
+
+targetTabs?.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("button[data-tab-id]");
+  if (!button) return;
+  const raw = button.dataset["tabId"] ?? "auto";
+  const pinnedTabId = raw === "auto" ? null : Number(raw);
+  if (pinnedTabId !== null && !Number.isSafeInteger(pinnedTabId)) return;
+  targetSignature = "";
+  setFeedback(pinnedTabId === null ? "Following the active tab." : "Target tab pinned.");
+  void chrome.runtime
+    .sendMessage({ type: "popup:save", patch: { pinnedTabId } })
+    .then(() => refresh())
+    .catch(() => setFeedback("Could not change the target tab."));
+});
+
+refreshTabsButton?.addEventListener("click", () => {
+  targetSignature = "";
+  void refresh();
 });
 
 void refresh();

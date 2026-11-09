@@ -25,6 +25,7 @@
       <section class="card" aria-labelledby="conn-title">
         <h2 id="conn-title">Connection</h2>
         <p id="status-detail" class="hint">Checking the local bridge.</p>
+        <p id="bridge-meta" class="hint mono"></p>
 
         <div class="field">
           <label for="token">Bridge token</label>
@@ -45,8 +46,19 @@
         <p id="save-feedback" class="hint feedback" role="status" aria-live="polite"></p>
       </section>
 
+      <section class="card" aria-labelledby="target-title">
+        <div class="card-head">
+          <h2 id="target-title">Target tab</h2>
+          <button id="refresh-tabs" class="btn btn-small" type="button">Refresh</button>
+        </div>
+        <ul id="target-tabs" class="tabs">
+          <li class="empty">Loading tabs...</li>
+        </ul>
+        <p class="hint">The agent controls this tab when a tool does not pass its own tab id.</p>
+      </section>
+
       <section class="card" aria-labelledby="tab-title">
-        <h2 id="tab-title">Active tab</h2>
+        <h2 id="tab-title">Current target</h2>
         <p id="tab-name" class="tab-name">No active tab</p>
         <p id="tab-url" class="tab-url">Focus a normal web page to let the agent read it.</p>
       </section>
