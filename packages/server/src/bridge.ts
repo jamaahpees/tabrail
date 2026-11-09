@@ -219,17 +219,18 @@ const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 * 1024 });
 wss.on("connection", (socket: WebSocket) => {
   let role: "extension" | "internal" | null = null;
   let authAttempts = 0;
-  let awaitingPong = false;
+  let lastSeen = Date.now();
 
   const helloTimer = setTimeout(() => {
     if (role === null) socket.close(4408, "hello timeout");
   }, HELLO_TIMEOUT_MS);
 
   socket.on("pong", () => {
-    awaitingPong = false;
+    lastSeen = Date.now();
   });
 
   socket.on("message", (raw: RawData) => {
+    lastSeen = Date.now();
     const data = parse(raw);
     if (!data || typeof data !== "object") return;
     const kind = (data as { kind?: unknown }).kind;
@@ -303,11 +304,11 @@ wss.on("connection", (socket: WebSocket) => {
     }
   });
 
-  socket.on("close", () => {
+  socket.on("close", (code: number, reason: Buffer) => {
     clearTimeout(helloTimer);
     if (role === "extension" && extensionSocket === socket) {
       extensionSocket = null;
-      log("extension disconnected");
+      log(`extension disconnected (code ${code}, reason ${reason.toString() || "none"})`);
       for (const [id, entry] of pending) {
         clearTimeout(entry.timer);
         pending.delete(id);
@@ -334,18 +335,15 @@ wss.on("connection", (socket: WebSocket) => {
   });
 
   const heartbeat = setInterval(() => {
-    if (awaitingPong) {
-      debug("heartbeat missed, closing socket");
-      socket.terminate();
-      return;
-    }
-    awaitingPong = true;
-    if (socket.readyState !== WebSocket.OPEN) return;
-    socket.ping();
     if (role === "extension") {
-      // Application level ping keeps the MV3 service worker alive and gives
-      // the extension a message event to react to.
-      socket.send(JSON.stringify({ kind: "ping" }));
+      if (Date.now() - lastSeen > 60_000) {
+        log("extension went silent, closing socket");
+        socket.terminate();
+        return;
+      }
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ kind: "ping" }));
+      }
     }
   }, HEARTBEAT_MS);
 
