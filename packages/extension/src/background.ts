@@ -7,7 +7,7 @@ import type {
 } from "./protocol.js";
 import { DEFAULT_SETTINGS, getSettings, originAllowed, saveSettings, type Settings } from "./settings.js";
 
-const EXTENSION_VERSION = "0.2.2";
+const EXTENSION_VERSION = "0.2.3";
 const RECONNECT_CAP_MS = 30_000;
 const CDP_IDLE_DETACH_MS = 30_000;
 const BLOCKED_SCHEME = /^(chrome|chrome-extension|edge|about|devtools|view-source|file|data|blob):/i;
@@ -142,6 +142,25 @@ async function pairWithBridge(port: number): Promise<string | null> {
   }
 }
 
+let recovering = false;
+let lastPairAttempt = 0;
+
+async function recoverToken(): Promise<void> {
+  if (recovering || Date.now() - lastPairAttempt < 15_000) return;
+  recovering = true;
+  lastPairAttempt = Date.now();
+  try {
+    const fresh = await pairWithBridge(settings.port);
+    if (!fresh) return;
+    settings = await saveSettings({ token: fresh });
+    rejectedDetail = null;
+    setStatus("connecting", "Paired again with the local bridge.");
+    requestReconnect("token refreshed");
+  } finally {
+    recovering = false;
+  }
+}
+
 async function doConnect(reason: string): Promise<void> {
   const current = await getSettings();
   settings = current;
@@ -264,6 +283,7 @@ async function onBridgeMessage(raw: unknown): Promise<void> {
       : message.error.message;
     setStatus("error", rejectedDetail);
     socket?.close(4001, "rejected");
+    if (message.error.code === "bad_token") void recoverToken();
     return;
   }
   if (message.kind === "call") {
@@ -1048,6 +1068,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 void connect("service worker start");
+
 
 
 

@@ -12,6 +12,7 @@ import {
 
 const PORT = 8791;
 const TOKEN = "e2e-token-0123456789abcdef0123456789";
+const WRONG_TOKEN = "e2e-wrong-token-0123456789abcdef";
 
 function refFor(snapshot, pattern) {
   const match = snapshot.match(new RegExp(`${pattern}[^\\n]*ref=(e\\d+)`));
@@ -50,7 +51,11 @@ async function setField(page, selector, value) {
 
 test("drives a real Chrome tab through the bridge", async (t) => {
   const fixture = await startFixtureServer();
-  const bridge = await startBridge({ port: PORT, token: TOKEN });
+  const bridge = await startBridge({
+    port: PORT,
+    token: TOKEN,
+    extraEnv: { MCP_BROWSER_ALLOW_LOCAL_PAIRING: "1" },
+  });
   const { browser, extensionId } = await launchChrome();
 
   t.after(async () => {
@@ -59,9 +64,12 @@ test("drives a real Chrome tab through the bridge", async (t) => {
     await fixture.close();
   });
 
-  const optionsPage = await configureExtension(browser, extensionId, { port: PORT, token: TOKEN });
+  const optionsPage = await configureExtension(browser, extensionId, { port: PORT, token: WRONG_TOKEN });
   const client = await connectClient(PORT, TOKEN);
   t.after(() => client.close());
+
+  // A stale token must recover through local pairing instead of retrying forever.
+  await waitUntil(() => client.ready?.extensionConnected, 25_000, "extension connection after token recovery");
 
   await clickInPage(optionsPage, "#reveal");
   assert.equal(await optionsPage.$eval("#token", (element) => element.type), "text");
@@ -72,7 +80,7 @@ test("drives a real Chrome tab through the bridge", async (t) => {
 
   const status = await client.call("status");
   assert.equal(status.bridge.state, "connected");
-  assert.equal(status.extensionVersion, "0.2.2");
+  assert.equal(status.extensionVersion, "0.2.3");
 
   const page = await browser.newPage();
   await page.goto(fixture.url("/index.html"), { waitUntil: "load" });
@@ -315,6 +323,7 @@ test("drives a real Chrome tab through the bridge", async (t) => {
     { timeout: 15_000, polling: 100 },
   );
 });
+
 
 
 
