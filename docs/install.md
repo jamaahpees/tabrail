@@ -86,7 +86,7 @@ npx -y tabrail extension
 Example output:
 
 ```
-TabRail extension 0.2.0
+TabRail extension 0.2.1
 
 Extension folder:
   C:\Users\you\AppData\Roaming\tabrail\extension

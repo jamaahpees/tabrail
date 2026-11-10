@@ -52,21 +52,21 @@ function setStatus(): void {
 }
 
 function controls(): HTMLButtonElement[] {
-  return [useTabButton, readButton, copyButton, downloadButton, importButton, clearButton].filter(
+  return [copyButton, downloadButton, importButton, clearButton].filter(
     (button): button is HTMLButtonElement => button !== null,
   );
 }
 
 function applyEnabled(): void {
   setStatus();
+  if (readButton) readButton.textContent = enabled ? "Read cookies" : "Allow and read cookies";
   for (const button of controls()) button.disabled = !enabled;
-  if (domainInput) domainInput.disabled = !enabled;
   if (importInput) importInput.disabled = !enabled;
   if (showValuesInput) showValuesInput.disabled = !enabled;
   if (!enabled) {
     cookies = [];
     render();
-    if (summary) summary.textContent = "Cookie tools are off.";
+    if (summary) summary.textContent = "Cookie tools are off. Click Allow and read cookies to start.";
   }
 }
 
@@ -157,11 +157,40 @@ function render(): void {
   }
 }
 
+async function enableAndRead(): Promise<void> {
+  if (!enabled) {
+    enabled = true;
+    if (enabledInput) enabledInput.checked = true;
+    await saveSettings({ cookiesEnabled: true });
+    applyEnabled();
+  }
+  await readCookies();
+}
+
 async function loadSettings(): Promise<void> {
   const settings = await getSettings();
   enabled = settings.cookiesEnabled;
   if (enabledInput) enabledInput.checked = enabled;
   applyEnabled();
+
+  const params = new URLSearchParams(location.search);
+  const requested = normalizeDomain(params.get("domain") ?? "");
+  if (requested && domainInput) domainInput.value = requested;
+
+  if (params.get("autoread") === "1" && (domainInput?.value ?? "").trim()) {
+    await enableAndRead();
+  } else if (!domainInput?.value) {
+    await fillFromMostRecentSite();
+  }
+}
+
+async function fillFromMostRecentSite(): Promise<void> {
+  const tabs = await chrome.tabs.query({});
+  const candidates = tabs
+    .filter((tab) => /^https?:/i.test(tab.url ?? ""))
+    .sort((left, right) => (right.lastAccessed ?? 0) - (left.lastAccessed ?? 0));
+  const host = candidates[0]?.url ? new URL(candidates[0].url).hostname : "";
+  if (host && domainInput) domainInput.value = host;
 }
 
 async function useActiveTab(): Promise<void> {
@@ -386,7 +415,7 @@ showValuesInput?.addEventListener("change", () => {
 });
 
 useTabButton?.addEventListener("click", () => void useActiveTab());
-readButton?.addEventListener("click", () => void readCookies());
+readButton?.addEventListener("click", () => void enableAndRead());
 copyButton?.addEventListener("click", () => void copyJson());
 downloadButton?.addEventListener("click", () => downloadJson());
 importButton?.addEventListener("click", () => void importCookies());

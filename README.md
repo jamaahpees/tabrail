@@ -189,7 +189,7 @@ Refs are stable while the page state is stable. After a re-render they fail with
 
 ## Cookie tools
 
-TabRail has its own cookie page, off by default. Open it from the popup footer.
+TabRail has its own cookie page, off by default. Open it from the popup footer. The page fills the domain from the tab you are targeting, enables the tools, and reads that site with one click on **Allow and read cookies**.
 
 - Read cookies for one domain
 - Copy or download JSON in Cookie-Editor format

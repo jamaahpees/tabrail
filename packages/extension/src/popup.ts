@@ -56,6 +56,7 @@ const cookiesLink = byId<HTMLAnchorElement>("cookies-link");
 
 let editingToken = false;
 let targetSignature = "";
+let latestPayload: StatusPayload | null = null;
 
 function tokenProblem(value: string): string | null {
   const token = value.trim();
@@ -161,6 +162,7 @@ function renderActivity(entries: ActivityEntry[]): void {
 }
 
 function render(payload: StatusPayload): void {
+  latestPayload = payload;
   const state = payload.status.state;
   if (pill) pill.dataset["state"] = state;
   if (statusText) statusText.textContent = statusLabels[state] ?? state;
@@ -259,7 +261,15 @@ optionsLink?.addEventListener("click", (event) => {
 
 cookiesLink?.addEventListener("click", (event) => {
   event.preventDefault();
-  void chrome.tabs.create({ url: chrome.runtime.getURL("cookies.html") });
+  const raw = latestPayload?.activeTab?.url ?? "";
+  let query = "";
+  try {
+    const host = new URL(raw).hostname;
+    if (host) query = `?domain=${encodeURIComponent(host)}&autoread=1`;
+  } catch {
+    // No normal site in focus, open the page without a preset domain.
+  }
+  void chrome.tabs.create({ url: chrome.runtime.getURL(`cookies.html${query}`) });
 });
 
 targetTabs?.addEventListener("click", (event) => {

@@ -72,7 +72,7 @@ test("drives a real Chrome tab through the bridge", async (t) => {
 
   const status = await client.call("status");
   assert.equal(status.bridge.state, "connected");
-  assert.equal(status.extensionVersion, "0.2.0");
+  assert.equal(status.extensionVersion, "0.2.1");
 
   const page = await browser.newPage();
   await page.goto(fixture.url("/index.html"), { waitUntil: "load" });
@@ -242,25 +242,20 @@ test("drives a real Chrome tab through the bridge", async (t) => {
     "active tab follows focus",
   );
 
-  const cookiePage = await browser.newPage();
-  await cookiePage.goto(`chrome-extension://${extensionId}/cookies.html`, { waitUntil: "domcontentloaded" });
-  await clickInPage(cookiePage, "#enabled");
-  await cookiePage.waitForFunction(() => !document.querySelector("#read")?.disabled, {
-    timeout: 8000,
-    polling: 100,
-  });
-
   await secondPage.bringToFront();
   await secondPage.evaluate(() => {
     document.cookie = "e2e_cookie=hello; path=/";
   });
 
-  await setField(cookiePage, "#domain", "127.0.0.1");
-  await clickInPage(cookiePage, "#read");
+  const cookiePage = await browser.newPage();
+  await cookiePage.goto(`chrome-extension://${extensionId}/cookies.html?domain=127.0.0.1&autoread=1`, {
+    waitUntil: "domcontentloaded",
+  });
   await cookiePage.waitForFunction(() => document.body.textContent?.includes("e2e_cookie"), {
     timeout: 10_000,
     polling: 100,
   });
+  assert.equal(await cookiePage.$eval("#enabled", (element) => element.checked), true);
 
   const importEntry = [
     {
@@ -320,5 +315,6 @@ test("drives a real Chrome tab through the bridge", async (t) => {
     { timeout: 15_000, polling: 100 },
   );
 });
+
 
 

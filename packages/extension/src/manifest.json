@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TabRail",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Control your real Chrome tabs from any MCP client through a local bridge.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -39,6 +39,7 @@
     "128": "icons/icon-128.png"
   }
 }
+
 
 
 

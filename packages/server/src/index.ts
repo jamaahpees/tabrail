@@ -21,7 +21,7 @@ async function main(): Promise<void> {
   const allowEval = process.env.MCP_BROWSER_ALLOW_EVAL === "1";
 
   const server = new McpServer(
-    { name: "tabrail", version: "0.2.0" },
+    { name: "tabrail", version: "0.2.1" },
     { instructions: INSTRUCTIONS },
   );
 
@@ -41,5 +41,6 @@ main().catch((error: unknown) => {
   process.stderr.write(`[mcp] fatal: ${message}\n`);
   process.exit(1);
 });
+
 
 
