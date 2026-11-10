@@ -84,25 +84,6 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
   );
 
   server.registerTool(
-    "browser_browsers",
-    {
-      title: "Browser instances",
-      description:
-        "List every Chrome instance connected to the bridge, choose which one the agent controls, or mark one active or inactive. Use this when more than one Chrome profile has the extension loaded.",
-      inputSchema: {
-        action: z.enum(["list", "select", "set_active"]).describe("list instances, select one, or change its active state."),
-        id: z.string().optional().describe("Instance id from the list, required for select and set_active."),
-        active: z.boolean().optional().describe("New active state for set_active."),
-      },
-    },
-    async ({ action, id, active }) => {
-      if (action === "list") return await call("instances", {});
-      if (action === "select") return await call("select_instance", { id });
-      return await call("set_instance_active", { id, active });
-    },
-  );
-
-  server.registerTool(
     "browser_navigate",
     {
       title: "Navigate",

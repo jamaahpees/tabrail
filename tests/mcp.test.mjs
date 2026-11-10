@@ -32,7 +32,11 @@ function fakeExtension(port, token, id) {
     socket.on("message", (raw) => {
       const message = JSON.parse(raw.toString());
       if (message.kind === "config") {
-        resolve({ id, close: () => socket.close() });
+        resolve({
+          id,
+          send: (payload) => socket.send(JSON.stringify(payload)),
+          close: () => socket.close(),
+        });
       }
       if (message.kind === "call") {
         socket.send(
@@ -131,7 +135,7 @@ test("local pairing only answers extension origins", async (t) => {
   assert.equal(webOrigin.status, 403);
 });
 
-test("routes calls to the selected browser instance", async (t) => {
+test("second browser takes over with one confirmation", async (t) => {
   const bridge = await startBridge({
     port: INSTANCE_PORT,
     token: PAIR_TOKEN,
@@ -149,29 +153,33 @@ test("routes calls to the selected browser instance", async (t) => {
   const client = await connectClient(INSTANCE_PORT, PAIR_TOKEN);
   t.after(() => client.close());
 
+  const initial = await client.call("who");
+  assert.equal(initial.who, "browser-a");
+
+  second.send({ kind: "takeover" });
   await waitUntil(
-    async () => (await client.call("instances")).instances.length === 2,
-    8000,
-    "two browser instances",
+    async () => {
+      try {
+        return (await client.call("who")).who === "browser-b";
+      } catch {
+        return false;
+      }
+    },
+    5000,
+    "takeover by the second browser",
   );
 
-  const listed = await client.call("instances");
-  assert.ok(listed.selected, "one instance is selected");
-  const other = listed.selected === "browser-a" ? "browser-b" : "browser-a";
-
-  const selection = await client.call("select_instance", { id: other });
-  assert.equal(selection.selected, other);
-
-  const routed = await client.call("who");
-  assert.equal(routed.who, other);
-
-  await client.call("set_instance_active", { id: other, active: false });
-  const fallback = await client.call("who");
-  assert.equal(fallback.who, listed.selected);
-
-  await client.call("set_instance_active", { id: other, active: true });
-  await client.call("select_instance", { id: other });
-  const again = await client.call("who");
-  assert.equal(again.who, other);
+  second.close();
+  await waitUntil(
+    async () => {
+      try {
+        return (await client.call("who")).who === "browser-a";
+      } catch {
+        return false;
+      }
+    },
+    5000,
+    "fallback to the first browser",
+  );
 });
 

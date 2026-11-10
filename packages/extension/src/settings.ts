@@ -7,7 +7,6 @@ export interface Settings {
   cookiesEnabled: boolean;
   instanceId: string;
   instanceLabel: string;
-  active: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -19,7 +18,6 @@ export const DEFAULT_SETTINGS: Settings = {
   cookiesEnabled: false,
   instanceId: "",
   instanceLabel: "",
-  active: true,
 };
 
 export async function getSettings(): Promise<Settings> {
@@ -33,7 +31,6 @@ export async function getSettings(): Promise<Settings> {
     cookiesEnabled: stored.cookiesEnabled === true,
     instanceId: typeof stored.instanceId === "string" ? stored.instanceId : "",
     instanceLabel: typeof stored.instanceLabel === "string" ? stored.instanceLabel : "",
-    active: stored.active !== false,
   };
 }
 

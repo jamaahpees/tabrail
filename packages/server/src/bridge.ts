@@ -7,14 +7,11 @@ import type {
   CallMessage,
   HelloMessage,
   InstanceInfo,
-  InstancesMessage,
   ResultMessage,
-  SelectInstanceMessage,
-  SetActiveMessage,
   ToolError,
 } from "./protocol.js";
 
-const BRIDGE_VERSION = "0.3.0";
+const BRIDGE_VERSION = "0.4.0";
 const PORT = bridgePort();
 const TOKEN = process.env.MCP_BROWSER_TOKEN ?? loadOrCreateToken();
 const ALLOW_EVAL = process.env.MCP_BROWSER_ALLOW_EVAL === "1";
@@ -52,13 +49,12 @@ interface ExtensionEntry {
   id: string;
   socket: WebSocket;
   label: string;
-  active: boolean;
   browser?: string;
   connectedAt: number;
 }
 
 const extensions = new Map<string, ExtensionEntry>();
-let selectedId: string | null = null;
+let activeInstanceId: string | null = null;
 const clients = new Set<WebSocket>();
 const pending = new Map<string, PendingCall>();
 const helloAttempts: HelloAttempt[] = [];
@@ -89,85 +85,43 @@ function tokenMatches(candidate: string): boolean {
   return timingSafeEqual(provided, expected);
 }
 
-function activeExtensions(): ExtensionEntry[] {
-  return [...extensions.values()].filter((entry) => entry.active);
-}
-
-function selectedExtension(): ExtensionEntry | null {
-  if (selectedId) {
-    const entry = extensions.get(selectedId);
-    if (entry?.active) return entry;
+function activeExtension(): ExtensionEntry | null {
+  if (activeInstanceId) {
+    const entry = extensions.get(activeInstanceId);
+    if (entry) return entry;
   }
-  return activeExtensions()[0] ?? null;
+  return [...extensions.values()][0] ?? null;
 }
 
 function instancesSnapshot(): InstanceInfo[] {
-  const selected = selectedExtension()?.id ?? null;
+  const activeId = activeExtension()?.id ?? null;
   return [...extensions.values()]
     .sort((left, right) => left.connectedAt - right.connectedAt)
     .map((entry) => ({
       id: entry.id,
       label: entry.label,
-      active: entry.active,
-      selected: entry.id === selected,
+      active: entry.id === activeId,
       connected: entry.socket.readyState === WebSocket.OPEN,
       ...(entry.browser ? { browser: entry.browser } : {}),
       connectedAt: entry.connectedAt,
     }));
 }
 
-function broadcastInstances(): void {
-  const message = {
-    kind: "instances",
-    selected: selectedExtension()?.id ?? null,
-    instances: instancesSnapshot(),
-  } satisfies InstancesMessage;
-  for (const entry of extensions.values()) send(entry.socket, message);
-  for (const client of clients) send(client, message);
-}
+function broadcastRoles(): void {
+  const active = activeExtension();
+  if (active && activeInstanceId !== active.id) activeInstanceId = active.id;
 
-function broadcastStatus(): void {
-  const connected = selectedExtension() !== null;
+  for (const entry of extensions.values()) {
+    send(entry.socket, {
+      kind: "role",
+      active: entry.id === activeInstanceId,
+      ...(active && entry.id !== activeInstanceId ? { activeLabel: active.label } : {}),
+    });
+  }
+
   for (const client of clients) {
-    send(client, { kind: "status", extensionConnected: connected });
+    send(client, { kind: "status", extensionConnected: active !== null });
   }
-  broadcastInstances();
-}
-
-function sendResult(socket: WebSocket, id: string, result: unknown): void {
-  if (socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify({ kind: "result", id, ok: true, result }));
-}
-
-function selectInstance(id: string): ToolError | null {
-  const entry = extensions.get(id);
-  if (!entry) {
-    return { code: "instance_not_found", message: `Browser instance "${id}" is not connected.` };
-  }
-  if (!entry.active) {
-    return {
-      code: "instance_inactive",
-      message: `Browser instance "${entry.label}" is inactive.`,
-      hint: "Activate it in the TabRail popup first.",
-    };
-  }
-  selectedId = id;
-  broadcastInstances();
-  return null;
-}
-
-function setInstanceActive(id: string, active: boolean): ToolError | null {
-  const entry = extensions.get(id);
-  if (!entry) {
-    return { code: "instance_not_found", message: `Browser instance "${id}" is not connected.` };
-  }
-  entry.active = active;
-  if (!active && selectedId === id) {
-    selectedId = activeExtensions().find((candidate) => candidate.id !== id)?.id ?? null;
-  }
-  if (active && selectedId === null) selectedId = id;
-  broadcastInstances();
-  return null;
 }
 
 function rejectPendingFor(socket: WebSocket, error: ToolError): void {
@@ -198,7 +152,7 @@ function handleResult(message: ResultMessage): void {
 }
 
 function handleExtensionCall(client: WebSocket, message: CallMessage): void {
-  const target = selectedExtension();
+  const target = activeExtension();
   debug(`call ${message.method} (instance=${target?.id ?? "none"})`);
 
   if (!target) {
@@ -299,8 +253,8 @@ const server = createServer((request, response) => {
         pid: process.pid,
         bridgeVersion: BRIDGE_VERSION,
         port: PORT,
-        extensionConnected: selectedExtension() !== null,
-        selectedInstance: selectedExtension()?.id ?? null,
+        extensionConnected: activeExtension() !== null,
+        selectedInstance: activeExtension()?.id ?? null,
         instances: instancesSnapshot(),
         clients: clients.size,
         pending: pending.size,
@@ -376,35 +330,28 @@ wss.on("connection", (socket: WebSocket) => {
         }
 
         instanceId = id;
-        const active = hello.active !== false;
         extensions.set(id, {
           id,
           socket,
           label,
-          active,
           ...(hello.browser ? { browser: hello.browser } : {}),
           connectedAt: Date.now(),
         });
 
-        if (selectedId === null || !extensions.has(selectedId)) {
-          selectedId = active ? id : (activeExtensions()[0]?.id ?? null);
+        if (activeInstanceId === null || !extensions.has(activeInstanceId)) {
+          activeInstanceId = id;
         }
 
-        log(`extension connected id=${id} label="${label}" active=${active}`);
+        log(`extension connected id=${id} label="${label}"`);
         send(socket, { kind: "config", allowEval: ALLOW_EVAL });
-        broadcastStatus();
+        broadcastRoles();
       } else {
         clients.add(socket);
         send(socket, {
           kind: "ready",
           allowEval: ALLOW_EVAL,
-          extensionConnected: selectedExtension() !== null,
+          extensionConnected: activeExtension() !== null,
           bridgeVersion: BRIDGE_VERSION,
-        });
-        send(socket, {
-          kind: "instances",
-          selected: selectedExtension()?.id ?? null,
-          instances: instancesSnapshot(),
         });
         log("mcp client connected");
       }
@@ -416,19 +363,11 @@ wss.on("connection", (socket: WebSocket) => {
       return;
     }
 
-    if (kind === "select") {
-      if (role !== "extension") return;
-      const message = data as SelectInstanceMessage;
-      const error = selectInstance(message.id);
-      if (error) send(socket, { kind: "reject", error });
-      return;
-    }
-
-    if (kind === "active") {
+    if (kind === "takeover") {
       if (role !== "extension" || instanceId === null) return;
-      const message = data as SetActiveMessage;
-      const error = setInstanceActive(instanceId, message.active === true);
-      if (error) send(socket, { kind: "reject", error });
+      activeInstanceId = instanceId;
+      log(`takeover by ${instanceId}`);
+      broadcastRoles();
       return;
     }
 
@@ -439,34 +378,7 @@ wss.on("connection", (socket: WebSocket) => {
 
     if (kind === "call") {
       if (role !== "internal") return;
-      const call = data as CallMessage;
-
-      if (call.method === "instances") {
-        sendResult(socket, call.id, {
-          selected: selectedExtension()?.id ?? null,
-          instances: instancesSnapshot(),
-        });
-        return;
-      }
-
-      if (call.method === "select_instance") {
-        const id = typeof call.params["id"] === "string" ? call.params["id"] : "";
-        const error = selectInstance(id);
-        if (error) sendError(socket, call.id, error);
-        else sendResult(socket, call.id, { selected: selectedExtension()?.id ?? null });
-        return;
-      }
-
-      if (call.method === "set_instance_active") {
-        const id = typeof call.params["id"] === "string" ? call.params["id"] : "";
-        const active = call.params["active"] === true;
-        const error = setInstanceActive(id, active);
-        if (error) sendError(socket, call.id, error);
-        else sendResult(socket, call.id, { id, active });
-        return;
-      }
-
-      handleExtensionCall(socket, call);
+      handleExtensionCall(socket, data as CallMessage);
     }
   });
 
@@ -477,8 +389,8 @@ wss.on("connection", (socket: WebSocket) => {
       if (entry && entry.socket === socket) {
         extensions.delete(instanceId);
         log(`extension disconnected id=${instanceId} (code ${code}, reason ${reason.toString() || "none"})`);
-        if (selectedId === instanceId) {
-          selectedId = activeExtensions()[0]?.id ?? null;
+        if (activeInstanceId === instanceId) {
+          activeInstanceId = [...extensions.values()][0]?.id ?? null;
         }
         for (const [id, call] of pending) {
           if (call.targetId !== instanceId) continue;
@@ -490,7 +402,7 @@ wss.on("connection", (socket: WebSocket) => {
             hint: "Keep Chrome open and make sure the TabRail extension is active, then retry.",
           });
         }
-        broadcastStatus();
+        broadcastRoles();
       }
     }
     if (role === "internal") {
@@ -551,6 +463,7 @@ function shutdown(): void {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 process.on("exit", () => clearBridgeInfo());
+
 
 
 

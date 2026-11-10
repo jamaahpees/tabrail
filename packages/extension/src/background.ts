@@ -3,12 +3,11 @@ import type {
   CallEnvelope,
   ContentResponse,
   ExtensionToBridge,
-  InstanceInfo,
   ToolErrorPayload,
 } from "./protocol.js";
 import { DEFAULT_SETTINGS, getSettings, originAllowed, saveSettings, type Settings } from "./settings.js";
 
-const EXTENSION_VERSION = "0.3.0";
+const EXTENSION_VERSION = "0.4.0";
 const RECONNECT_CAP_MS = 30_000;
 const CDP_IDLE_DETACH_MS = 30_000;
 const BLOCKED_SCHEME = /^(chrome|chrome-extension|edge|about|devtools|view-source|file|data|blob):/i;
@@ -77,8 +76,7 @@ let connectQueue: Promise<void> = Promise.resolve();
 let allowEval = false;
 let activity: Activity[] = [];
 let rejectedDetail: string | null = null;
-let instanceSnapshot: InstanceInfo[] = [];
-let selectedInstanceId: string | null = null;
+let browserRole: { active: boolean; activeLabel: string | null } = { active: false, activeLabel: null };
 
 const consoleBuffers = new Map<number, ConsoleEntry[]>();
 const networkBuffers = new Map<number, NetworkEntry[]>();
@@ -220,7 +218,6 @@ async function doConnect(reason: string): Promise<void> {
         browser: navigator.userAgent,
         instanceId: current.instanceId,
         label: current.instanceLabel,
-        active: current.active,
       }),
     );
     reconnectAttempts = 0;
@@ -302,9 +299,11 @@ async function onBridgeMessage(raw: unknown): Promise<void> {
     if (message.error.code === "bad_token") void recoverToken();
     return;
   }
-  if (message.kind === "instances") {
-    instanceSnapshot = message.instances;
-    selectedInstanceId = message.selected;
+  if (message.kind === "role") {
+    browserRole = {
+      active: message.active === true,
+      activeLabel: typeof message.activeLabel === "string" ? message.activeLabel : null,
+    };
     return;
   }
   if (message.kind === "call") {
@@ -796,9 +795,8 @@ async function extensionStatus(): Promise<unknown> {
       ? { tabId: target.id, title: target.title, url: target.url, windowId: target.windowId }
       : null,
     pinnedTabId: settings.pinnedTabId,
-    instance: { id: settings.instanceId, label: settings.instanceLabel, active: settings.active },
-    instances: instanceSnapshot,
-    selectedInstanceId,
+    instance: { id: settings.instanceId, label: settings.instanceLabel },
+    role: browserRole,
     debuggerAttachedTabs: [...attachedTabs.keys()],
     pendingDialogs: [...pendingDialogs.entries()].map(([tabId, dialog]) => ({ tabId, ...dialog })),
     allowEval,
@@ -1029,11 +1027,9 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
           allowlist: settings.allowlist,
           hasToken: Boolean(settings.token),
           pinnedTabId: settings.pinnedTabId,
-          active: settings.active,
         },
-        instance: { id: settings.instanceId, label: settings.instanceLabel, active: settings.active },
-        instances: instanceSnapshot,
-        selectedInstanceId,
+        instance: { id: settings.instanceId, label: settings.instanceLabel },
+        role: browserRole,
         bridgeUrl: `ws://127.0.0.1:${settings.port}`,
         tokenLength: settings.token.length,
         tabs,
@@ -1050,20 +1046,9 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     return true;
   }
 
-  if (type === "popup:select-instance") {
-    const id = (message as { id?: string }).id ?? "";
-    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ kind: "select", id }));
+  if (type === "popup:takeover") {
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ kind: "takeover" }));
     sendResponse({ ok: true });
-    return true;
-  }
-
-  if (type === "popup:set-active") {
-    const active = (message as { active?: boolean }).active === true;
-    void (async () => {
-      settings = await saveSettings({ active });
-      if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ kind: "active", active }));
-      sendResponse({ ok: true, active });
-    })();
     return true;
   }
 
@@ -1114,6 +1099,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 void connect("service worker start");
+
 
 
 

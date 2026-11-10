@@ -14,33 +14,21 @@ export interface HelloMessage {
   browser?: string;
   instanceId?: string;
   label?: string;
-  active?: boolean;
 }
 
 export interface InstanceInfo {
   id: string;
   label: string;
   active: boolean;
-  selected: boolean;
   connected: boolean;
   browser?: string;
   connectedAt: number;
 }
 
-export interface InstancesMessage {
-  kind: "instances";
-  selected: string | null;
-  instances: InstanceInfo[];
-}
-
-export interface SelectInstanceMessage {
-  kind: "select";
-  id: string;
-}
-
-export interface SetActiveMessage {
-  kind: "active";
+export interface RoleMessage {
+  kind: "role";
   active: boolean;
+  activeLabel?: string;
 }
 
 export interface CallMessage {
@@ -93,4 +81,4 @@ export type BridgeMessage =
   | StatusMessage
   | RejectMessage
   | ResultMessage
-  | InstancesMessage;
+  | RoleMessage;
