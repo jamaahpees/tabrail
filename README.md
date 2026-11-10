@@ -233,6 +233,7 @@ Threat model and limits: [SECURITY.md](SECURITY.md).
 | `cdp_unavailable` | DevTools is open on that tab, or an enterprise policy blocks the debugger. |
 | `stale_ref` | Take a new snapshot. |
 | Port conflict | Another bridge owns the port. Stop it or set `MCP_BROWSER_PORT`. |
+| MCP says offline after a port change | Every MCP client session spawns its own server process. Restart the client, or the affected session, so old processes stop connecting to the previous port. |
 
 ## Environment variables
 
