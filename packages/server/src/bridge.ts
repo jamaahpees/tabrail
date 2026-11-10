@@ -159,7 +159,7 @@ function handleExtensionCall(client: WebSocket, message: CallMessage): void {
     sendError(client, message.id, {
       code: "no_active_browser",
       message: "No active TabRail browser is connected to the bridge.",
-      hint: "Open Chrome, click the TabRail icon, and make sure the Active toggle is on.",
+      hint: "Open Chrome, click the TabRail icon, and keep the popup open while the bridge starts. If another Chrome is in use, click Use this browser.",
     });
     return;
   }
