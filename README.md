@@ -8,7 +8,7 @@ TabRail lets any MCP client read and control the Chrome tabs you are already usi
 MCP client (OpenCode, Claude, Codex, Cursor)
         │  stdio MCP
         ▼
-tabrail (local server)  ── WebSocket 127.0.0.1:8765 ──  TabRail Chrome extension  ──►  your tabs
+tabrail (local server)  ── WebSocket 127.0.0.1:51337 ──  TabRail Chrome extension  ──►  your tabs
 ```
 
 The server is a thin MCP layer. A small local bridge owns the WebSocket, and the extension controls the tab you choose.
@@ -238,7 +238,7 @@ Threat model and limits: [SECURITY.md](SECURITY.md).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `MCP_BROWSER_PORT` | `8765` | Bridge port, set it in the extension too |
+| `MCP_BROWSER_PORT` | `51337` | Bridge port, set it in the extension too |
 | `MCP_BROWSER_HOME` | OS config folder | Token and bridge files |
 | `MCP_BROWSER_ALLOW_LOCAL_PAIRING` | off | Let the extension fetch the token itself |
 | `MCP_BROWSER_PAIR_ORIGINS` | empty | Comma-separated extension origins allowed to pair |
@@ -299,3 +299,4 @@ Release notes and a zip of the extension are published on GitHub Releases.
 ## License
 
 MIT
+

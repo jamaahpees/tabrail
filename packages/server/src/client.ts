@@ -74,7 +74,7 @@ export class BridgeClient {
 
       socket.on("message", onMessage);
       socket.on("open", () => {
-        socket.send(JSON.stringify({ kind: "hello", role: "internal", token, version: "0.2.1" }));
+        socket.send(JSON.stringify({ kind: "hello", role: "internal", token, version: "0.2.2" }));
       });
       socket.on("error", (error) => finish(error instanceof Error ? error : new Error(String(error))));
       socket.on("close", () => finish(new Error("The bridge closed the connection before it was ready")));
@@ -160,5 +160,6 @@ export class BridgeClient {
     }
   }
 }
+
 
 

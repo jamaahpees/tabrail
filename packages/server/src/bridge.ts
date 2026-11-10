@@ -10,7 +10,7 @@ import type {
   ToolError,
 } from "./protocol.js";
 
-const BRIDGE_VERSION = "0.2.1";
+const BRIDGE_VERSION = "0.2.2";
 const PORT = bridgePort();
 const TOKEN = process.env.MCP_BROWSER_TOKEN ?? loadOrCreateToken();
 const ALLOW_EVAL = process.env.MCP_BROWSER_ALLOW_EVAL === "1";
@@ -377,6 +377,7 @@ function shutdown(): void {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 process.on("exit", () => clearBridgeInfo());
+
 
 
 

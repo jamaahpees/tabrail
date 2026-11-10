@@ -1,6 +1,6 @@
 {
   "name": "tabrail",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Control the Chrome tabs you are already logged into, from any MCP client, through a local bridge and a Manifest V3 extension.",
   "type": "module",
   "license": "MIT",
@@ -62,4 +62,5 @@
     "typescript": "~5.9.3"
   }
 }
+
 

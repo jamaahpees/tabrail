@@ -8,7 +8,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  port: 8765,
+  port: 51337,
   token: "",
   enabled: true,
   allowlist: [],
@@ -60,3 +60,4 @@ export function originAllowed(url: string | undefined, allowlist: string[]): boo
     return parsed.hostname === entry || parsed.hostname.endsWith(`.${entry}`);
   });
 }
+

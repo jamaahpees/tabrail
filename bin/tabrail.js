@@ -22,7 +22,7 @@ function tokenFile() {
 
 function port() {
   const raw = process.env.MCP_BROWSER_PORT;
-  return raw ? Number(raw) : 8765;
+  return raw ? Number(raw) : 51337;
 }
 
 function extensionSource() {
@@ -147,7 +147,7 @@ Usage:
   tabrail help         Show this help
 
 Environment:
-  MCP_BROWSER_PORT                 Bridge port, default 8765
+  MCP_BROWSER_PORT                 Bridge port, default 51337
   MCP_BROWSER_HOME                 Config folder override
   MCP_BROWSER_ALLOW_LOCAL_PAIRING  Set 1 to let the extension pair itself
   MCP_BROWSER_ALLOW_EVAL           Set 1 to expose browser_evaluate
@@ -173,3 +173,4 @@ if (command === "mcp") {
   help();
   process.exit(1);
 }
+

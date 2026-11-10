@@ -72,7 +72,7 @@ test("drives a real Chrome tab through the bridge", async (t) => {
 
   const status = await client.call("status");
   assert.equal(status.bridge.state, "connected");
-  assert.equal(status.extensionVersion, "0.2.1");
+  assert.equal(status.extensionVersion, "0.2.2");
 
   const page = await browser.newPage();
   await page.goto(fixture.url("/index.html"), { waitUntil: "load" });
@@ -315,6 +315,7 @@ test("drives a real Chrome tab through the bridge", async (t) => {
     { timeout: 15_000, polling: 100 },
   );
 });
+
 
 
 

@@ -51,7 +51,7 @@ export function loadOrCreateToken(): string {
 
 export function bridgePort(): number {
   const raw = process.env.MCP_BROWSER_PORT;
-  if (!raw) return 8765;
+  if (!raw) return 51337;
   const port = Number(raw);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`MCP_BROWSER_PORT must be a port number, got "${raw}"`);
@@ -87,4 +87,5 @@ export function readBridgeInfo(): BridgeInfo | null {
 export function clearBridgeInfo(): void {
   rmSync(infoFile(), { force: true });
 }
+
 

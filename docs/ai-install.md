@@ -4,7 +4,7 @@ This page is written for an agent that is asked to install TabRail. Follow it in
 
 ## What TabRail is
 
-A local MCP server and a Chrome extension. The server speaks stdio MCP and owns a loopback WebSocket bridge on `127.0.0.1:8765`. The extension attaches to the Chrome tabs the user already has open. There is no remote service, no account, and no cookie requirement.
+A local MCP server and a Chrome extension. The server speaks stdio MCP and owns a loopback WebSocket bridge on `127.0.0.1:51337`. The extension attaches to the Chrome tabs the user already has open. There is no remote service, no account, and no cookie requirement.
 
 ## Preconditions
 
@@ -107,3 +107,4 @@ Report:
 3. The result of `tabrail doctor`
 4. The result of `browser_status`
 5. The list of tabs, with a recommendation for which to pin
+
