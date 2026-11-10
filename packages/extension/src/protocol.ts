@@ -21,12 +21,35 @@ export interface RejectEnvelope {
   error: ToolErrorPayload;
 }
 
-export type BridgeToExtension = CallEnvelope | ConfigEnvelope | RejectEnvelope | { kind: "ping" };
+export interface InstanceInfo {
+  id: string;
+  label: string;
+  active: boolean;
+  selected: boolean;
+  connected: boolean;
+  browser?: string;
+  connectedAt: number;
+}
+
+export interface InstancesEnvelope {
+  kind: "instances";
+  selected: string | null;
+  instances: InstanceInfo[];
+}
+
+export type BridgeToExtension =
+  | CallEnvelope
+  | ConfigEnvelope
+  | RejectEnvelope
+  | InstancesEnvelope
+  | { kind: "ping" };
 
 export type ExtensionToBridge =
   | { kind: "result"; id: string; ok: true; result: unknown }
   | { kind: "result"; id: string; ok: false; error: ToolErrorPayload }
-  | { kind: "pong" };
+  | { kind: "pong" }
+  | { kind: "select"; id: string }
+  | { kind: "active"; active: boolean };
 
 export interface ContentRequest {
   type: "content:req";

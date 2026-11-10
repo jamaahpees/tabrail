@@ -12,11 +12,22 @@ interface TabOption {
   active: boolean;
 }
 
+interface BrowserInstance {
+  id: string;
+  label: string;
+  active: boolean;
+  selected: boolean;
+  connected: boolean;
+}
+
 interface StatusPayload {
   status: { state: string; detail?: string; updatedAt: string };
   activity: ActivityEntry[];
   allowEval: boolean;
-  settings: { port: number; enabled: boolean; allowlist: string[]; hasToken: boolean; pinnedTabId: number | null };
+  settings: { port: number; enabled: boolean; allowlist: string[]; hasToken: boolean; pinnedTabId: number | null; active: boolean };
+  instance: { id: string; label: string; active: boolean };
+  instances: BrowserInstance[];
+  selectedInstanceId: string | null;
   bridgeUrl: string;
   tokenLength: number;
   tabs: TabOption[];
@@ -49,6 +60,9 @@ const tabName = byId<HTMLParagraphElement>("tab-name");
 const tabUrl = byId<HTMLParagraphElement>("tab-url");
 const targetTabs = byId<HTMLUListElement>("target-tabs");
 const refreshTabsButton = byId<HTMLButtonElement>("refresh-tabs");
+const browserList = byId<HTMLUListElement>("browser-list");
+const browserActiveInput = byId<HTMLInputElement>("browser-active");
+const refreshBrowsersButton = byId<HTMLButtonElement>("refresh-browsers");
 const activityList = byId<HTMLUListElement>("activity");
 const versionLabel = byId<HTMLSpanElement>("version");
 const optionsLink = byId<HTMLAnchorElement>("options-link");
@@ -56,6 +70,7 @@ const cookiesLink = byId<HTMLAnchorElement>("cookies-link");
 
 let editingToken = false;
 let targetSignature = "";
+let browserSignature = "";
 let latestPayload: StatusPayload | null = null;
 
 function tokenProblem(value: string): string | null {
@@ -161,6 +176,65 @@ function renderActivity(entries: ActivityEntry[]): void {
   }
 }
 
+function renderBrowsers(payload: StatusPayload): void {
+  if (!browserList) return;
+  const instances = payload.instances ?? [];
+  const signature = `${payload.selectedInstanceId}|${payload.instance.id}|${instances
+    .map((entry) => `${entry.id}:${entry.active}:${entry.selected}:${entry.label}`)
+    .join("|")}`;
+  if (signature === browserSignature) return;
+  browserSignature = signature;
+
+  browserList.replaceChildren();
+  if (instances.length === 0) {
+    const item = document.createElement("li");
+    item.className = "empty";
+    item.textContent = "No Chrome connected yet.";
+    browserList.append(item);
+    return;
+  }
+
+  for (const entry of instances) {
+    const item = document.createElement("li");
+    item.className = "browser-row";
+
+    const label = document.createElement("span");
+    label.className = "browser-label";
+    label.textContent = entry.id === payload.instance.id ? `${entry.label} (this browser)` : entry.label;
+
+    const actions = document.createElement("span");
+    actions.className = "browser-actions";
+
+    if (entry.selected) {
+      const badge = document.createElement("span");
+      badge.className = "badge badge-on";
+      badge.textContent = "In use";
+      actions.append(badge);
+    } else if (!entry.active) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = "Inactive";
+      actions.append(badge);
+    } else {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-small";
+      button.textContent = "Use";
+      button.addEventListener("click", () => {
+        browserSignature = "";
+        void chrome.runtime
+          .sendMessage({ type: "popup:select-instance", id: entry.id })
+          .then(() => refresh())
+          .catch(() => setFeedback("Could not switch browser."));
+      });
+      actions.append(button);
+    }
+
+    item.append(label, actions);
+    browserList.append(item);
+  }
+}
+
 function render(payload: StatusPayload): void {
   latestPayload = payload;
   const state = payload.status.state;
@@ -183,6 +257,10 @@ function render(payload: StatusPayload): void {
     enabledInput.checked = payload.settings.enabled;
   }
 
+  if (browserActiveInput && document.activeElement !== browserActiveInput) {
+    browserActiveInput.checked = payload.instance.active;
+  }
+
   if (tokenInput && !editingToken) {
     tokenInput.placeholder = payload.settings.hasToken ? "Token saved. Paste a new one to replace it." : "Paste the token from the server";
   }
@@ -192,6 +270,7 @@ function render(payload: StatusPayload): void {
   if (versionLabel) versionLabel.textContent = `v${payload.version}`;
 
   renderTargetTabs(payload);
+  renderBrowsers(payload);
   renderActivity(payload.activity);
 }
 
@@ -288,6 +367,21 @@ targetTabs?.addEventListener("click", (event) => {
 
 refreshTabsButton?.addEventListener("click", () => {
   targetSignature = "";
+  void refresh();
+});
+
+browserActiveInput?.addEventListener("change", () => {
+  const active = browserActiveInput.checked;
+  browserSignature = "";
+  setFeedback(active ? "This browser is active for MCP." : "This browser is inactive for MCP.");
+  void chrome.runtime
+    .sendMessage({ type: "popup:set-active", active })
+    .then(() => refresh())
+    .catch(() => setFeedback("Could not change the active state."));
+});
+
+refreshBrowsersButton?.addEventListener("click", () => {
+  browserSignature = "";
   void refresh();
 });
 

@@ -80,7 +80,11 @@ test("drives a real Chrome tab through the bridge", async (t) => {
 
   const status = await client.call("status");
   assert.equal(status.bridge.state, "connected");
-  assert.equal(status.extensionVersion, "0.2.3");
+  assert.equal(status.extensionVersion, "0.3.0");
+  await waitUntil(async () => (await client.call("status")).instances?.length === 1, 8000, "instance registration");
+  const withInstance = await client.call("status");
+  assert.equal(withInstance.instances.length, 1);
+  assert.equal(withInstance.selectedInstanceId, withInstance.instances[0].id);
 
   const page = await browser.newPage();
   await page.goto(fixture.url("/index.html"), { waitUntil: "load" });
@@ -316,6 +320,38 @@ test("drives a real Chrome tab through the bridge", async (t) => {
 
   const pillState = await popup.$eval("#status-pill", (element) => element.dataset.state);
   assert.equal(pillState, "connected");
+  await popup.waitForFunction(
+    () => /\(this browser\)/.test(document.querySelector("#browser-list")?.textContent ?? ""),
+    { timeout: 10_000, polling: 100 },
+  );
+
+  await clickInPage(popup, "#browser-active");
+  await waitUntil(
+    async () => {
+      try {
+        await client.call("status");
+        return false;
+      } catch (error) {
+        return error.code === "no_active_browser";
+      }
+    },
+    8000,
+    "instance deactivated",
+  );
+
+  await clickInPage(popup, "#browser-active");
+  await waitUntil(
+    async () => {
+      try {
+        const current = await client.call("status");
+        return current.bridge.state === "connected";
+      } catch {
+        return false;
+      }
+    },
+    8000,
+    "instance active again",
+  );
 
   await clickInPage(optionsPage, "#test");
   await optionsPage.waitForFunction(
@@ -323,6 +359,7 @@ test("drives a real Chrome tab through the bridge", async (t) => {
     { timeout: 15_000, polling: 100 },
   );
 });
+
 
 
 

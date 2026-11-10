@@ -86,7 +86,7 @@ npx -y tabrail extension
 Example output:
 
 ```
-TabRail extension 0.2.1
+TabRail extension 0.3.0
 
 Extension folder:
   C:\Users\you\AppData\Roaming\tabrail\extension
@@ -168,4 +168,5 @@ Then click **Reload** on the extension card in `chrome://extensions`. The MCP co
 | Everything is connected but tools fail | Check the target tab. Chrome system pages cannot be controlled. |
 
 Still stuck? Open an issue with the output of `npx -y tabrail doctor`. Never include cookies or tokens.
+
 

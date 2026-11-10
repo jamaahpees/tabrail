@@ -3,11 +3,12 @@ import type {
   CallEnvelope,
   ContentResponse,
   ExtensionToBridge,
+  InstanceInfo,
   ToolErrorPayload,
 } from "./protocol.js";
 import { DEFAULT_SETTINGS, getSettings, originAllowed, saveSettings, type Settings } from "./settings.js";
 
-const EXTENSION_VERSION = "0.2.3";
+const EXTENSION_VERSION = "0.3.0";
 const RECONNECT_CAP_MS = 30_000;
 const CDP_IDLE_DETACH_MS = 30_000;
 const BLOCKED_SCHEME = /^(chrome|chrome-extension|edge|about|devtools|view-source|file|data|blob):/i;
@@ -76,6 +77,8 @@ let connectQueue: Promise<void> = Promise.resolve();
 let allowEval = false;
 let activity: Activity[] = [];
 let rejectedDetail: string | null = null;
+let instanceSnapshot: InstanceInfo[] = [];
+let selectedInstanceId: string | null = null;
 
 const consoleBuffers = new Map<number, ConsoleEntry[]>();
 const networkBuffers = new Map<number, NetworkEntry[]>();
@@ -161,8 +164,18 @@ async function recoverToken(): Promise<void> {
   }
 }
 
+async function ensureInstance(): Promise<Settings> {
+  let current = await getSettings();
+  if (!current.instanceId || !current.instanceLabel) {
+    const instanceId = current.instanceId || crypto.randomUUID();
+    const instanceLabel = current.instanceLabel || `Chrome ${instanceId.slice(0, 4)}`;
+    current = await saveSettings({ instanceId, instanceLabel });
+  }
+  return current;
+}
+
 async function doConnect(reason: string): Promise<void> {
-  const current = await getSettings();
+  const current = await ensureInstance();
   settings = current;
 
   if (!current.enabled) {
@@ -205,6 +218,9 @@ async function doConnect(reason: string): Promise<void> {
         token: current.token,
         version: EXTENSION_VERSION,
         browser: navigator.userAgent,
+        instanceId: current.instanceId,
+        label: current.instanceLabel,
+        active: current.active,
       }),
     );
     reconnectAttempts = 0;
@@ -284,6 +300,11 @@ async function onBridgeMessage(raw: unknown): Promise<void> {
     setStatus("error", rejectedDetail);
     socket?.close(4001, "rejected");
     if (message.error.code === "bad_token") void recoverToken();
+    return;
+  }
+  if (message.kind === "instances") {
+    instanceSnapshot = message.instances;
+    selectedInstanceId = message.selected;
     return;
   }
   if (message.kind === "call") {
@@ -775,6 +796,9 @@ async function extensionStatus(): Promise<unknown> {
       ? { tabId: target.id, title: target.title, url: target.url, windowId: target.windowId }
       : null,
     pinnedTabId: settings.pinnedTabId,
+    instance: { id: settings.instanceId, label: settings.instanceLabel, active: settings.active },
+    instances: instanceSnapshot,
+    selectedInstanceId,
     debuggerAttachedTabs: [...attachedTabs.keys()],
     pendingDialogs: [...pendingDialogs.entries()].map(([tabId, dialog]) => ({ tabId, ...dialog })),
     allowEval,
@@ -1005,7 +1029,11 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
           allowlist: settings.allowlist,
           hasToken: Boolean(settings.token),
           pinnedTabId: settings.pinnedTabId,
+          active: settings.active,
         },
+        instance: { id: settings.instanceId, label: settings.instanceLabel, active: settings.active },
+        instances: instanceSnapshot,
+        selectedInstanceId,
         bridgeUrl: `ws://127.0.0.1:${settings.port}`,
         tokenLength: settings.token.length,
         tabs,
@@ -1019,6 +1047,23 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   if (type === "popup:reconnect") {
     requestReconnect("manual");
     sendResponse({ ok: true });
+    return true;
+  }
+
+  if (type === "popup:select-instance") {
+    const id = (message as { id?: string }).id ?? "";
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ kind: "select", id }));
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (type === "popup:set-active") {
+    const active = (message as { active?: boolean }).active === true;
+    void (async () => {
+      settings = await saveSettings({ active });
+      if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ kind: "active", active }));
+      sendResponse({ ok: true, active });
+    })();
     return true;
   }
 
@@ -1050,7 +1095,8 @@ chrome.storage.onChanged.addListener((_changes, area) => {
 
 void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
 
-chrome.alarms.create("keepalive", { periodInMinutes: 0.5 });chrome.alarms.onAlarm.addListener((alarm) => {
+chrome.alarms.create("keepalive", { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== "keepalive") return;
   if (!socket || socket.readyState === WebSocket.CLOSED) {
     void connect("alarm");
@@ -1068,6 +1114,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 void connect("service worker start");
+
 
 
 

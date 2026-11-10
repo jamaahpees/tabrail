@@ -46,6 +46,21 @@
         <p id="save-feedback" class="hint feedback" role="status" aria-live="polite"></p>
       </section>
 
+      <section class="card" aria-labelledby="browsers-title">
+        <div class="card-head">
+          <h2 id="browsers-title">Browsers</h2>
+          <button id="refresh-browsers" class="btn btn-small" type="button">Refresh</button>
+        </div>
+        <ul id="browser-list" class="browsers">
+          <li class="empty">No Chrome connected yet.</li>
+        </ul>
+        <label class="switch" for="browser-active">
+          <input id="browser-active" type="checkbox" />
+          <span>Active in MCP</span>
+        </label>
+        <p class="hint">With more than one Chrome connected, choose the one the agent should use.</p>
+      </section>
+
       <section class="card" aria-labelledby="target-title">
         <div class="card-head">
           <h2 id="target-title">Target tab</h2>

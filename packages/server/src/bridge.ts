@@ -6,11 +6,15 @@ import type {
   BridgeMessage,
   CallMessage,
   HelloMessage,
+  InstanceInfo,
+  InstancesMessage,
   ResultMessage,
+  SelectInstanceMessage,
+  SetActiveMessage,
   ToolError,
 } from "./protocol.js";
 
-const BRIDGE_VERSION = "0.2.3";
+const BRIDGE_VERSION = "0.3.0";
 const PORT = bridgePort();
 const TOKEN = process.env.MCP_BROWSER_TOKEN ?? loadOrCreateToken();
 const ALLOW_EVAL = process.env.MCP_BROWSER_ALLOW_EVAL === "1";
@@ -33,6 +37,7 @@ interface PendingCall {
   client: WebSocket;
   originalId: string;
   method: string;
+  targetId: string | null;
   timer: NodeJS.Timeout;
 }
 
@@ -43,7 +48,17 @@ interface HelloAttempt {
   ok: boolean;
 }
 
-let extensionSocket: WebSocket | null = null;
+interface ExtensionEntry {
+  id: string;
+  socket: WebSocket;
+  label: string;
+  active: boolean;
+  browser?: string;
+  connectedAt: number;
+}
+
+const extensions = new Map<string, ExtensionEntry>();
+let selectedId: string | null = null;
 const clients = new Set<WebSocket>();
 const pending = new Map<string, PendingCall>();
 const helloAttempts: HelloAttempt[] = [];
@@ -74,10 +89,85 @@ function tokenMatches(candidate: string): boolean {
   return timingSafeEqual(provided, expected);
 }
 
-function broadcastStatus(): void {
-  for (const client of clients) {
-    send(client, { kind: "status", extensionConnected: extensionSocket !== null });
+function activeExtensions(): ExtensionEntry[] {
+  return [...extensions.values()].filter((entry) => entry.active);
+}
+
+function selectedExtension(): ExtensionEntry | null {
+  if (selectedId) {
+    const entry = extensions.get(selectedId);
+    if (entry?.active) return entry;
   }
+  return activeExtensions()[0] ?? null;
+}
+
+function instancesSnapshot(): InstanceInfo[] {
+  const selected = selectedExtension()?.id ?? null;
+  return [...extensions.values()]
+    .sort((left, right) => left.connectedAt - right.connectedAt)
+    .map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      active: entry.active,
+      selected: entry.id === selected,
+      connected: entry.socket.readyState === WebSocket.OPEN,
+      ...(entry.browser ? { browser: entry.browser } : {}),
+      connectedAt: entry.connectedAt,
+    }));
+}
+
+function broadcastInstances(): void {
+  const message = {
+    kind: "instances",
+    selected: selectedExtension()?.id ?? null,
+    instances: instancesSnapshot(),
+  } satisfies InstancesMessage;
+  for (const entry of extensions.values()) send(entry.socket, message);
+  for (const client of clients) send(client, message);
+}
+
+function broadcastStatus(): void {
+  const connected = selectedExtension() !== null;
+  for (const client of clients) {
+    send(client, { kind: "status", extensionConnected: connected });
+  }
+  broadcastInstances();
+}
+
+function sendResult(socket: WebSocket, id: string, result: unknown): void {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ kind: "result", id, ok: true, result }));
+}
+
+function selectInstance(id: string): ToolError | null {
+  const entry = extensions.get(id);
+  if (!entry) {
+    return { code: "instance_not_found", message: `Browser instance "${id}" is not connected.` };
+  }
+  if (!entry.active) {
+    return {
+      code: "instance_inactive",
+      message: `Browser instance "${entry.label}" is inactive.`,
+      hint: "Activate it in the TabRail popup first.",
+    };
+  }
+  selectedId = id;
+  broadcastInstances();
+  return null;
+}
+
+function setInstanceActive(id: string, active: boolean): ToolError | null {
+  const entry = extensions.get(id);
+  if (!entry) {
+    return { code: "instance_not_found", message: `Browser instance "${id}" is not connected.` };
+  }
+  entry.active = active;
+  if (!active && selectedId === id) {
+    selectedId = activeExtensions().find((candidate) => candidate.id !== id)?.id ?? null;
+  }
+  if (active && selectedId === null) selectedId = id;
+  broadcastInstances();
+  return null;
 }
 
 function rejectPendingFor(socket: WebSocket, error: ToolError): void {
@@ -108,12 +198,14 @@ function handleResult(message: ResultMessage): void {
 }
 
 function handleExtensionCall(client: WebSocket, message: CallMessage): void {
-  debug(`call ${message.method} (extension=${extensionSocket ? "yes" : "no"})`);
-  if (!extensionSocket) {
+  const target = selectedExtension();
+  debug(`call ${message.method} (instance=${target?.id ?? "none"})`);
+
+  if (!target) {
     sendError(client, message.id, {
-      code: "extension_offline",
-      message: "The Chrome extension is not connected to the bridge.",
-      hint: "Open Chrome and click the TabRail icon, then check that the token matches the one in the extension options.",
+      code: "no_active_browser",
+      message: "No active TabRail browser is connected to the bridge.",
+      hint: "Open Chrome, click the TabRail icon, and make sure the Active toggle is on.",
     });
     return;
   }
@@ -138,8 +230,14 @@ function handleExtensionCall(client: WebSocket, message: CallMessage): void {
     });
   }, callTimeout(message.method, message.params));
 
-  pending.set(bridgeId, { client, originalId: message.id, method: message.method, timer });
-  send(extensionSocket, {
+  pending.set(bridgeId, {
+    client,
+    originalId: message.id,
+    method: message.method,
+    targetId: target.id,
+    timer,
+  });
+  send(target.socket, {
     kind: "call",
     id: bridgeId,
     method: message.method,
@@ -201,7 +299,9 @@ const server = createServer((request, response) => {
         pid: process.pid,
         bridgeVersion: BRIDGE_VERSION,
         port: PORT,
-        extensionConnected: extensionSocket !== null,
+        extensionConnected: selectedExtension() !== null,
+        selectedInstance: selectedExtension()?.id ?? null,
+        instances: instancesSnapshot(),
         clients: clients.size,
         pending: pending.size,
         uptimeSeconds: Math.round(process.uptime()),
@@ -218,6 +318,7 @@ const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 * 1024 });
 
 wss.on("connection", (socket: WebSocket) => {
   let role: "extension" | "internal" | null = null;
+  let instanceId: string | null = null;
   let authAttempts = 0;
   let lastSeen = Date.now();
 
@@ -267,12 +368,29 @@ wss.on("connection", (socket: WebSocket) => {
       clearTimeout(helloTimer);
 
       if (role === "extension") {
-        if (extensionSocket) {
-          socket.close(4409, "extension already connected");
-          return;
+        const id = (hello.instanceId ?? "").trim() || `ext-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const label = (hello.label ?? "").trim() || `Chrome ${extensions.size + 1}`;
+        const previous = extensions.get(id);
+        if (previous && previous.socket !== socket) {
+          previous.socket.close(4410, "instance reconnected");
         }
-        extensionSocket = socket;
-        log(`extension connected (${hello.browser ?? "unknown browser"})`);
+
+        instanceId = id;
+        const active = hello.active !== false;
+        extensions.set(id, {
+          id,
+          socket,
+          label,
+          active,
+          ...(hello.browser ? { browser: hello.browser } : {}),
+          connectedAt: Date.now(),
+        });
+
+        if (selectedId === null || !extensions.has(selectedId)) {
+          selectedId = active ? id : (activeExtensions()[0]?.id ?? null);
+        }
+
+        log(`extension connected id=${id} label="${label}" active=${active}`);
         send(socket, { kind: "config", allowEval: ALLOW_EVAL });
         broadcastStatus();
       } else {
@@ -280,8 +398,13 @@ wss.on("connection", (socket: WebSocket) => {
         send(socket, {
           kind: "ready",
           allowEval: ALLOW_EVAL,
-          extensionConnected: extensionSocket !== null,
+          extensionConnected: selectedExtension() !== null,
           bridgeVersion: BRIDGE_VERSION,
+        });
+        send(socket, {
+          kind: "instances",
+          selected: selectedExtension()?.id ?? null,
+          instances: instancesSnapshot(),
         });
         log("mcp client connected");
       }
@@ -293,6 +416,22 @@ wss.on("connection", (socket: WebSocket) => {
       return;
     }
 
+    if (kind === "select") {
+      if (role !== "extension") return;
+      const message = data as SelectInstanceMessage;
+      const error = selectInstance(message.id);
+      if (error) send(socket, { kind: "reject", error });
+      return;
+    }
+
+    if (kind === "active") {
+      if (role !== "extension" || instanceId === null) return;
+      const message = data as SetActiveMessage;
+      const error = setInstanceActive(instanceId, message.active === true);
+      if (error) send(socket, { kind: "reject", error });
+      return;
+    }
+
     if (kind === "result") {
       handleResult(data as ResultMessage);
       return;
@@ -300,25 +439,59 @@ wss.on("connection", (socket: WebSocket) => {
 
     if (kind === "call") {
       if (role !== "internal") return;
-      handleExtensionCall(socket, data as CallMessage);
+      const call = data as CallMessage;
+
+      if (call.method === "instances") {
+        sendResult(socket, call.id, {
+          selected: selectedExtension()?.id ?? null,
+          instances: instancesSnapshot(),
+        });
+        return;
+      }
+
+      if (call.method === "select_instance") {
+        const id = typeof call.params["id"] === "string" ? call.params["id"] : "";
+        const error = selectInstance(id);
+        if (error) sendError(socket, call.id, error);
+        else sendResult(socket, call.id, { selected: selectedExtension()?.id ?? null });
+        return;
+      }
+
+      if (call.method === "set_instance_active") {
+        const id = typeof call.params["id"] === "string" ? call.params["id"] : "";
+        const active = call.params["active"] === true;
+        const error = setInstanceActive(id, active);
+        if (error) sendError(socket, call.id, error);
+        else sendResult(socket, call.id, { id, active });
+        return;
+      }
+
+      handleExtensionCall(socket, call);
     }
   });
 
   socket.on("close", (code: number, reason: Buffer) => {
     clearTimeout(helloTimer);
-    if (role === "extension" && extensionSocket === socket) {
-      extensionSocket = null;
-      log(`extension disconnected (code ${code}, reason ${reason.toString() || "none"})`);
-      for (const [id, entry] of pending) {
-        clearTimeout(entry.timer);
-        pending.delete(id);
-        sendError(entry.client, entry.originalId, {
-          code: "extension_disconnected",
-          message: "The Chrome extension disconnected while the browser call was running.",
-          hint: "Keep Chrome open and make sure the extension service worker is alive, then retry.",
-        });
+    if (role === "extension" && instanceId) {
+      const entry = extensions.get(instanceId);
+      if (entry && entry.socket === socket) {
+        extensions.delete(instanceId);
+        log(`extension disconnected id=${instanceId} (code ${code}, reason ${reason.toString() || "none"})`);
+        if (selectedId === instanceId) {
+          selectedId = activeExtensions()[0]?.id ?? null;
+        }
+        for (const [id, call] of pending) {
+          if (call.targetId !== instanceId) continue;
+          clearTimeout(call.timer);
+          pending.delete(id);
+          sendError(call.client, call.originalId, {
+            code: "extension_disconnected",
+            message: "The Chrome extension disconnected while the browser call was running.",
+            hint: "Keep Chrome open and make sure the TabRail extension is active, then retry.",
+          });
+        }
+        broadcastStatus();
       }
-      broadcastStatus();
     }
     if (role === "internal") {
       clients.delete(socket);
@@ -369,7 +542,8 @@ function shutdown(): void {
   for (const entry of pending.values()) clearTimeout(entry.timer);
   pending.clear();
   for (const client of clients) client.close(1001, "bridge shutting down");
-  extensionSocket?.close(1001, "bridge shutting down");
+  for (const entry of extensions.values()) entry.socket.close(1001, "bridge shutting down");
+  extensions.clear();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1000).unref();
 }
@@ -377,6 +551,7 @@ function shutdown(): void {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 process.on("exit", () => clearBridgeInfo());
+
 
 
 

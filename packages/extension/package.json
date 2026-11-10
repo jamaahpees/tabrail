@@ -1,6 +1,6 @@
 {
   "name": "@tabrail/extension",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Manifest V3 extension that exposes Chrome tabs to the local MCP bridge.",
@@ -12,6 +12,7 @@
     "esbuild": "^0.28.2"
   }
 }
+
 
 
 

@@ -148,11 +148,27 @@ The popup lists your open tabs. Click one to pin it, or leave **Follow active ta
 
 If the pinned tab closes, the extension falls back to follow active tab.
 
+## Multiple Chrome profiles
+
+The bridge accepts more than one Chrome instance. Each extension install gets an id and a label, stored locally.
+
+The popup **Browsers** card lists every connected instance:
+
+- **In use** marks the instance the agent controls
+- **Use** selects another active instance
+- **Inactive** means that instance is connected but excluded from routing
+- **Active in MCP** turns this browser on or off
+
+Only one instance receives each tool call. If the selected instance disconnects or is deactivated, the bridge falls back to the first active instance. Agents can inspect and change this through `browser_browsers`.
+
+This is the fix for two Chrome windows fighting over one socket. Before, the second connection was rejected and both sides reconnected in a loop.
+
 ## Tools
 
 | Tool | Purpose |
 | --- | --- |
 | `browser_status` | Bridge, extension, target tab, debugger, pending dialogs |
+| `browser_browsers` | List connected Chrome instances, select one, or set it active or inactive |
 | `browser_tabs` | `list`, `new`, `close`, `activate` |
 | `browser_navigate` | Open a URL and wait for load |
 | `browser_go_back` | Back one history entry |
@@ -204,6 +220,7 @@ Cookie values never go to the MCP server, never appear in logs, and never leave 
 - Bridge listens on `127.0.0.1` only
 - Every client sends a token, compared in constant time
 - Local pairing accepts `chrome-extension://` origins only and rejects web pages with 403
+- Instance labels and ids are client-provided; routing trusts any connection that presents the bridge token
 - Extension allowlist in options, empty means all http and https sites
 - `debugger` attaches lazily and detaches after 30 seconds idle
 - `browser_evaluate` and cookie tools are off by default

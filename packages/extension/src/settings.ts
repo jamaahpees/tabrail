@@ -5,6 +5,9 @@ export interface Settings {
   allowlist: string[];
   pinnedTabId: number | null;
   cookiesEnabled: boolean;
+  instanceId: string;
+  instanceLabel: string;
+  active: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -14,6 +17,9 @@ export const DEFAULT_SETTINGS: Settings = {
   allowlist: [],
   pinnedTabId: null,
   cookiesEnabled: false,
+  instanceId: "",
+  instanceLabel: "",
+  active: true,
 };
 
 export async function getSettings(): Promise<Settings> {
@@ -25,6 +31,9 @@ export async function getSettings(): Promise<Settings> {
     allowlist: Array.isArray(stored.allowlist) ? stored.allowlist.filter((item) => typeof item === "string") : [],
     pinnedTabId: typeof stored.pinnedTabId === "number" ? stored.pinnedTabId : null,
     cookiesEnabled: stored.cookiesEnabled === true,
+    instanceId: typeof stored.instanceId === "string" ? stored.instanceId : "",
+    instanceLabel: typeof stored.instanceLabel === "string" ? stored.instanceLabel : "",
+    active: stored.active !== false,
   };
 }
 
