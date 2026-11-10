@@ -242,6 +242,57 @@ test("drives a real Chrome tab through the bridge", async (t) => {
     "active tab follows focus",
   );
 
+  const cookiePage = await browser.newPage();
+  await cookiePage.goto(`chrome-extension://${extensionId}/cookies.html`, { waitUntil: "domcontentloaded" });
+  await clickInPage(cookiePage, "#enabled");
+  await cookiePage.waitForFunction(() => !document.querySelector("#read")?.disabled, {
+    timeout: 8000,
+    polling: 100,
+  });
+
+  await secondPage.bringToFront();
+  await secondPage.evaluate(() => {
+    document.cookie = "e2e_cookie=hello; path=/";
+  });
+
+  await setField(cookiePage, "#domain", "127.0.0.1");
+  await clickInPage(cookiePage, "#read");
+  await cookiePage.waitForFunction(() => document.body.textContent?.includes("e2e_cookie"), {
+    timeout: 10_000,
+    polling: 100,
+  });
+
+  const importEntry = [
+    {
+      name: "e2e_import",
+      value: "yes",
+      domain: "127.0.0.1",
+      path: "/",
+      secure: false,
+      httpOnly: false,
+      sameSite: "lax",
+      session: true,
+      hostOnly: true,
+    },
+  ];
+  await setField(cookiePage, "#import-json", JSON.stringify(importEntry));
+  await clickInPage(cookiePage, "#import");
+  await cookiePage.waitForFunction(
+    () => /Imported/.test(document.querySelector("#feedback")?.textContent ?? ""),
+    { timeout: 10_000, polling: 100 },
+  );
+  const cookieString = await secondPage.evaluate(() => document.cookie);
+  assert.match(cookieString, /e2e_import=yes/);
+
+  await clickInPage(cookiePage, "#clear");
+  await clickInPage(cookiePage, "#clear");
+  await cookiePage.waitForFunction(
+    () => /Removed/.test(document.querySelector("#summary")?.textContent ?? ""),
+    { timeout: 10_000, polling: 100 },
+  );
+  const cookiesAfter = await secondPage.evaluate(() => document.cookie);
+  assert.doesNotMatch(cookiesAfter, /e2e_import/);
+
   await popup.bringToFront();
   await clickInPage(popup, "#enabled");
   await popup.waitForFunction(

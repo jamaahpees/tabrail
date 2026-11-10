@@ -15,6 +15,9 @@ for (let index = 0; index < 40 && !client.ready?.extensionConnected; index += 1)
 
 const page = await browser.newPage();
 await page.goto(fixture.url("/index.html"), { waitUntil: "load" });
+await page.evaluate(() => {
+  document.cookie = "demo_cookie=hello; path=/";
+});
 const tabs = await client.call("tabs", { action: "list" });
 const tab = tabs.tabs.find((entry) => entry.url?.includes("/index.html"));
 if (tab) {
@@ -42,6 +45,26 @@ await options.screenshot({ path: `${OUT}/options-dark.png`, fullPage: true });
 await options.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
 await sleep(300);
 await options.screenshot({ path: `${OUT}/options-light.png`, fullPage: true });
+
+const cookies = await browser.newPage();
+await cookies.setViewport({ width: 900, height: 900 });
+await cookies.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+await cookies.goto(`chrome-extension://${extensionId}/cookies.html`, { waitUntil: "domcontentloaded" });
+await cookies.evaluate(() => {
+  document.querySelector("#enabled")?.click();
+});
+await sleep(400);
+await cookies.evaluate(() => {
+  const domain = document.querySelector("#domain");
+  if (domain instanceof HTMLInputElement) domain.value = "127.0.0.1";
+  document.querySelector("#read")?.click();
+});
+await sleep(600);
+await cookies.screenshot({ path: `${OUT}/cookies-dark.png`, fullPage: true });
+
+await cookies.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
+await sleep(300);
+await cookies.screenshot({ path: `${OUT}/cookies-light.png`, fullPage: true });
 
 await browser.close();
 client.close();

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cookie tools</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="options">
+    <main class="page">
+      <header class="page-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>Cookie tools</h1>
+            <p class="subtitle">Read, copy, import, and remove cookies for one site.</p>
+          </div>
+        </div>
+        <span id="status-pill" class="pill" data-state="disabled">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="status-text">Cookie tools off</span>
+        </span>
+      </header>
+
+      <section class="card" aria-labelledby="enable-title">
+        <h2 id="enable-title">Permission</h2>
+        <label class="switch" for="enabled">
+          <input id="enabled" type="checkbox" />
+          <span>Enable cookie reading, export, and import</span>
+        </label>
+        <p class="hint">
+          Off by default. While enabled, the values you read here are live session credentials. They are never logged,
+          never sent to the MCP server, and never leave this browser unless you copy or download them yourself.
+        </p>
+      </section>
+
+      <section class="card" aria-labelledby="site-title">
+        <h2 id="site-title">Site</h2>
+        <div class="field">
+          <label for="domain">Domain</label>
+          <div class="row">
+            <input id="domain" type="text" spellcheck="false" autocomplete="off" placeholder="example.com" />
+            <button id="use-tab" class="btn" type="button">Use active tab</button>
+          </div>
+          <p class="hint">Hostname only, without scheme or path. Subdomains are included when this domain matches.</p>
+        </div>
+
+        <div class="actions">
+          <button id="read" class="btn btn-primary" type="button">Read cookies</button>
+          <button id="copy" class="btn" type="button">Copy JSON</button>
+          <button id="download" class="btn" type="button">Download JSON</button>
+          <label class="switch" for="show-values">
+            <input id="show-values" type="checkbox" />
+            <span>Show values</span>
+          </label>
+        </div>
+
+        <p id="summary" class="hint" role="status" aria-live="polite"></p>
+
+        <div class="table-wrap">
+          <table id="cookie-table" class="cookie-table">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Domain</th>
+                <th scope="col">Path</th>
+                <th scope="col">Flags</th>
+                <th scope="col">Value</th>
+              </tr>
+            </thead>
+            <tbody id="cookie-list">
+              <tr>
+                <td colspan="5" class="empty">Enable the tools, then read cookies.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="import-title">
+        <h2 id="import-title">Import</h2>
+        <div class="field">
+          <label for="import-json">Cookie JSON, same shape as a Cookie-Editor export</label>
+          <textarea
+            id="import-json"
+            rows="6"
+            spellcheck="false"
+            placeholder='[{"name":"sid","value":"...","domain":".example.com","path":"/","secure":true,"httpOnly":true,"sameSite":"lax","session":true}]'
+          ></textarea>
+        </div>
+        <div class="actions">
+          <button id="import" class="btn btn-primary" type="button">Import cookies</button>
+          <button id="clear" class="btn btn-danger" type="button">Delete cookies for this domain</button>
+        </div>
+        <p id="feedback" class="hint" role="status" aria-live="polite"></p>
+      </section>
+
+      <p class="hint"><a href="options.html" id="options-link">Back to options</a></p>
+    </main>
+
+    <script src="cookies.js"></script>
+  </body>
+</html>

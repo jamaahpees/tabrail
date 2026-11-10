@@ -175,6 +175,18 @@ Popup extension menampilkan daftar tab yang terbuka. Klik satu tab untuk mengunc
 
 Kalau tab yang dipilih ditutup, extension otomatis kembali ke mode follow active tab. Popup juga menampilkan alamat bridge dan panjang token, jadi kamu bisa membedakan masalah token dengan masalah koneksi.
 
+### Cookie tools (opsional)
+
+Halaman **Cookies** di extension bisa membaca, menyalin, mengimpor, dan menghapus cookie untuk satu domain. Tidak perlu extension Cookie-Editor lagi. Fitur ini **mati secara default** dan harus dinyalakan dengan satu klik.
+
+- **Read cookies** memanggil `chrome.cookies.getAll` untuk domain yang kamu isi
+- **Copy JSON** dan **Download JSON** menghasilkan format yang sama dengan export Cookie-Editor
+- **Import cookies** menerima JSON yang ditempel, memvalidasi, lalu memasang lewat `chrome.cookies.set`
+- **Delete cookies for this domain** butuh dua klik konfirmasi
+- Nilai cookie ditampilkan tersembunyi sampai kamu mencentang **Show values**
+
+Nilai cookie tidak pernah dikirim ke MCP server, tidak masuk log, dan tidak muncul di popup. Yang keluar dari browser hanya yang kamu salin atau unduh sendiri.
+
 ## Keamanan
 
 - Bridge hanya listen di `127.0.0.1`, tidak pernah ke jaringan.
@@ -183,6 +195,8 @@ Kalau tab yang dipilih ditutup, extension otomatis kembali ke mode follow active
 - Allowlist origin di halaman options kosong berarti semua situs http/https diizinkan. Isi allowlist kalau kamu ingin membatasi.
 - Permission `debugger` memunculkan peringatan saat instalasi. CDP hanya dipasang saat tool console, network, screenshot, dialog, atau `trusted` click dipanggil, lalu dilepas setelah 30 detik idle.
 - Tool `browser_evaluate` mati secara default karena itu jalur paling berbahaya.
+- Cookie tools mati secara default. Permission `cookies` memberi extension akses ke nilai cookie, termasuk yang `HttpOnly`, jadi perlakukan hasil export sebagai kredensial session penuh. Jangan tempel ke chat, jangan simpan di repo.
+- Import cookie hanya untuk akun dan session milikmu sendiri. Memasang cookie milik orang lain sama dengan membajak session.
 - Extension tidak membaca, mengekspor, atau mengirim cookie situs. Session tetap di Chrome, dan agent hanya melihat DOM tab yang dipilih. Tidak ada fitur cookie sync, dan memang tidak dibutuhkan untuk kontrol browser.
 - Local pairing menerima origin `chrome-extension://` saja, bukan halaman web. Saat diaktifkan, extension lain di profil Chrome yang sama juga bisa meminta token, jadi aktifkan hanya di profil yang kamu percaya. Untuk mengunci satu extension, isi `MCP_BROWSER_PAIR_ORIGINS`.
 

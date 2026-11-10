@@ -17,8 +17,9 @@ await build({ ...shared, entryPoints: ["src/background.ts"], outfile: `${outDir}
 await build({ ...shared, entryPoints: ["src/content.ts"], outfile: `${outDir}/content.js` });
 await build({ ...shared, entryPoints: ["src/popup.ts"], outfile: `${outDir}/popup.js` });
 await build({ ...shared, entryPoints: ["src/options.ts"], outfile: `${outDir}/options.js` });
+await build({ ...shared, entryPoints: ["src/cookies.ts"], outfile: `${outDir}/cookies.js` });
 
-for (const file of ["manifest.json", "popup.html", "options.html", "ui.css"]) {
+for (const file of ["manifest.json", "popup.html", "options.html", "cookies.html", "ui.css"]) {
   await copyFile(`src/${file}`, `${outDir}/${file}`);
 }
 

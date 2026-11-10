@@ -52,6 +52,7 @@ const refreshTabsButton = byId<HTMLButtonElement>("refresh-tabs");
 const activityList = byId<HTMLUListElement>("activity");
 const versionLabel = byId<HTMLSpanElement>("version");
 const optionsLink = byId<HTMLAnchorElement>("options-link");
+const cookiesLink = byId<HTMLAnchorElement>("cookies-link");
 
 let editingToken = false;
 let targetSignature = "";
@@ -254,6 +255,11 @@ enabledInput?.addEventListener("change", () => {
 optionsLink?.addEventListener("click", (event) => {
   event.preventDefault();
   void chrome.runtime.openOptionsPage();
+});
+
+cookiesLink?.addEventListener("click", (event) => {
+  event.preventDefault();
+  void chrome.tabs.create({ url: chrome.runtime.getURL("cookies.html") });
 });
 
 targetTabs?.addEventListener("click", (event) => {
