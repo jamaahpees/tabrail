@@ -1,6 +1,6 @@
 {
-  "name": "@mcp-remote-chrome/extension",
-  "version": "0.1.0",
+  "name": "@tabrail/extension",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Manifest V3 extension that exposes Chrome tabs to the local MCP bridge.",
@@ -12,3 +12,5 @@
     "esbuild": "^0.28.2"
   }
 }
+
+

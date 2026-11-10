@@ -1,13 +1,42 @@
 {
-  "name": "mcp-remote-chrome-extension",
-  "version": "0.1.0",
-  "private": true,
+  "name": "tabrail",
+  "version": "0.2.0",
+  "description": "Control the Chrome tabs you are already logged into, from any MCP client, through a local bridge and a Manifest V3 extension.",
   "type": "module",
-  "description": "Control your real Chrome browser from any MCP client through a local bridge and a Manifest V3 extension.",
+  "license": "MIT",
+  "author": "jamaahpees",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jamaahpees/mcp-remote-chrome-extension.git"
+    "url": "git+https://github.com/jamaahpees/tabrail.git"
   },
+  "homepage": "https://github.com/jamaahpees/tabrail#readme",
+  "bugs": {
+    "url": "https://github.com/jamaahpees/tabrail/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "chrome",
+    "browser",
+    "automation",
+    "extension",
+    "browser-control",
+    "tabrail",
+    "opencode",
+    "claude",
+    "codex"
+  ],
+  "bin": {
+    "tabrail": "bin/tabrail.js",
+    "tabrail-mcp": "bin/tabrail.js"
+  },
+  "files": [
+    "bin/",
+    "packages/server/dist/",
+    "packages/extension/dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "workspaces": [
     "packages/*"
   ],
@@ -15,18 +44,21 @@
     "node": ">=20.11"
   },
   "scripts": {
-    "build": "npm run build --workspace @mcp-remote-chrome/server && npm run build --workspace @mcp-remote-chrome/extension",
+    "build": "npm run build --workspace @tabrail/server && npm run build --workspace @tabrail/extension",
     "typecheck": "tsc -p packages/server/tsconfig.json --noEmit && tsc -p packages/extension/tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/mcp.test.mjs tests/e2e.test.mjs",
     "screenshots": "node tests/visual-check.mjs",
-    "start": "node packages/server/dist/index.js"
+    "start": "node packages/server/dist/index.js",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "ws": "^8.22.2",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "puppeteer-core": "^25.16.0",
     "typescript": "~5.9.3"
-  },
-  "allowScripts": {
-    "esbuild@0.28.2": true
   }
 }

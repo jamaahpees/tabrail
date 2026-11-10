@@ -8,10 +8,10 @@ export function configDir(): string {
   if (override) return override;
   if (process.platform === "win32") {
     const appData = process.env.APPDATA ?? join(homedir(), "AppData", "Roaming");
-    return join(appData, "mcp-remote-chrome");
+    return join(appData, "tabrail");
   }
   const base = process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
-  return join(base, "mcp-remote-chrome");
+  return join(base, "tabrail");
 }
 
 export function ensureConfigDir(): string {
@@ -87,3 +87,4 @@ export function readBridgeInfo(): BridgeInfo | null {
 export function clearBridgeInfo(): void {
   rmSync(infoFile(), { force: true });
 }
+

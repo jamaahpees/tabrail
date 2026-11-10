@@ -66,6 +66,10 @@ await cookies.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "ligh
 await sleep(300);
 await cookies.screenshot({ path: `${OUT}/cookies-light.png`, fullPage: true });
 
+await cookies.setViewport({ width: 420, height: 900 });
+await sleep(200);
+await cookies.screenshot({ path: `${OUT}/cookies-narrow.png`, fullPage: true });
+
 await browser.close();
 client.close();
 bridge.stop();

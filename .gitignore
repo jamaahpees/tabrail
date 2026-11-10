@@ -9,3 +9,6 @@ Thumbs.db
 tmp/
 coverage/
 tests/.artifacts/
+release/
+*.zip
+*.tgz

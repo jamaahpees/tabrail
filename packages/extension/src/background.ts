@@ -7,7 +7,7 @@ import type {
 } from "./protocol.js";
 import { DEFAULT_SETTINGS, getSettings, originAllowed, saveSettings, type Settings } from "./settings.js";
 
-const EXTENSION_VERSION = "0.1.0";
+const EXTENSION_VERSION = "0.2.0";
 const RECONNECT_CAP_MS = 30_000;
 const CDP_IDLE_DETACH_MS = 30_000;
 const BLOCKED_SCHEME = /^(chrome|chrome-extension|edge|about|devtools|view-source|file|data|blob):/i;
@@ -1048,3 +1048,4 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 void connect("service worker start");
+

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Remote Browser Bridge",
-  "version": "0.1.0",
-  "description": "Let a local MCP agent read and control your real Chrome tabs through a loopback bridge.",
+  "name": "TabRail",
+  "version": "0.2.0",
+  "description": "Control your real Chrome tabs from any MCP client through a local bridge.",
   "minimum_chrome_version": "116",
   "permissions": [
     "tabs",
@@ -21,7 +21,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Remote Browser Bridge",
+    "default_title": "TabRail",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
@@ -39,3 +39,6 @@
     "128": "icons/icon-128.png"
   }
 }
+
+
+

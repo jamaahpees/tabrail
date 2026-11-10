@@ -1,0 +1,26 @@
+# TabRail
+
+> Control the Chrome tabs you are already logged into, from any MCP client.
+
+## Docs
+
+- [README](README.md): overview, quick start, configuration
+- [Install](docs/install.md): step-by-step for humans
+- [AI install contract](docs/ai-install.md): instructions for agents installing TabRail
+- [Security](SECURITY.md): threat model and controls
+- [Contributing](CONTRIBUTING.md): development and release
+
+## Commands
+
+- `npx -y tabrail setup` prints MCP client configuration
+- `npx -y tabrail extension` extracts the Chrome extension and prints its folder
+- `npx -y tabrail doctor` checks token, bridge, and extension state
+- `npx -y tabrail mcp` runs the MCP server over stdio
+
+## Notes for models
+
+- Register the server as `chrome`
+- Keep `MCP_BROWSER_ALLOW_LOCAL_PAIRING=1` for automatic pairing
+- Ask the user to load the extension folder in `chrome://extensions`
+- Never request cookies, tokens, or passwords in chat
+- Call `browser_snapshot` before clicking or typing

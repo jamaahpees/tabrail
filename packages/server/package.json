@@ -1,11 +1,11 @@
 {
-  "name": "@mcp-remote-chrome/server",
-  "version": "0.1.0",
+  "name": "@tabrail/server",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Local MCP bridge for the Remote Browser Chrome extension.",
+  "description": "Local MCP bridge for the TabRail Chrome extension.",
   "bin": {
-    "mcp-remote-chrome": "./dist/index.js"
+    "tabrail": "./dist/index.js"
   },
   "files": [
     "dist"
@@ -22,3 +22,6 @@
     "@types/ws": "^8.18.2"
   }
 }
+
+
+

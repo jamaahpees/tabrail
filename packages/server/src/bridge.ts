@@ -10,7 +10,7 @@ import type {
   ToolError,
 } from "./protocol.js";
 
-const BRIDGE_VERSION = "0.1.0";
+const BRIDGE_VERSION = "0.2.0";
 const PORT = bridgePort();
 const TOKEN = process.env.MCP_BROWSER_TOKEN ?? loadOrCreateToken();
 const ALLOW_EVAL = process.env.MCP_BROWSER_ALLOW_EVAL === "1";
@@ -113,7 +113,7 @@ function handleExtensionCall(client: WebSocket, message: CallMessage): void {
     sendError(client, message.id, {
       code: "extension_offline",
       message: "The Chrome extension is not connected to the bridge.",
-      hint: "Open Chrome and click the Remote Browser Bridge icon, then check that the token matches the one in the extension options.",
+      hint: "Open Chrome and click the TabRail icon, then check that the token matches the one in the extension options.",
     });
     return;
   }
@@ -377,3 +377,5 @@ function shutdown(): void {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 process.on("exit", () => clearBridgeInfo());
+
+
