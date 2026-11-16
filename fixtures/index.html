@@ -36,6 +36,36 @@
         padding: 10px;
         margin-top: 16px;
       }
+      #chart-wrap {
+        position: relative;
+        width: 420px;
+        height: 220px;
+        margin-top: 8px;
+      }
+      #chart {
+        display: block;
+        border: 1px solid #d9d2c4;
+        cursor: crosshair;
+      }
+      #tooltip {
+        position: absolute;
+        padding: 4px 6px;
+        background: #221f1a;
+        color: #fffdf8;
+        font-size: 12px;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      #scroller {
+        height: 120px;
+        overflow: auto;
+        border: 1px solid #d9d2c4;
+        background: #fffdf8;
+      }
+      #scroller p {
+        margin: 0;
+        padding: 4px 8px;
+      }
     </style>
   </head>
   <body>
@@ -68,6 +98,20 @@
 
       <div id="list" aria-label="Items"></div>
       <div id="editor" contenteditable="true" role="textbox" aria-label="Note">Hello</div>
+
+      <h2>Pointer lab</h2>
+      <div id="chart-wrap">
+        <canvas id="chart" width="420" height="220" aria-label="Pointer chart"></canvas>
+        <div id="tooltip" hidden></div>
+      </div>
+      <p id="move-readout" role="status">move none</p>
+      <p id="click-readout" role="status">click none</p>
+      <p id="drop-readout" role="status">drop none</p>
+      <label for="range">Range</label>
+      <input id="range" type="range" min="0" max="100" value="50" />
+      <p id="range-readout" role="status">50</p>
+      <p id="wheel-readout" role="status">0</p>
+      <div id="scroller" tabindex="0"><div id="scroller-content"></div></div>
     </main>
 
     <script>
@@ -101,6 +145,63 @@
         item.textContent = name;
         list.append(item);
       }
+
+      const chart = document.getElementById("chart");
+      const tooltip = document.getElementById("tooltip");
+      const moveReadout = document.getElementById("move-readout");
+      const clickReadout = document.getElementById("click-readout");
+      const dropReadout = document.getElementById("drop-readout");
+      const context = chart.getContext("2d");
+
+      function chartPoint(event) {
+        const rect = chart.getBoundingClientRect();
+        return { x: Math.round(event.clientX - rect.left), y: Math.round(event.clientY - rect.top) };
+      }
+
+      function paint(point) {
+        context.fillStyle = "#e7e0d2";
+        context.fillRect(0, 0, chart.width, chart.height);
+        context.fillStyle = "#b3261e";
+        context.fillRect(point.x - 2, point.y - 2, 5, 5);
+      }
+
+      chart.addEventListener("mousemove", (event) => {
+        const point = chartPoint(event);
+        paint(point);
+        tooltip.hidden = false;
+        tooltip.textContent = "cell " + point.x + "," + point.y;
+        tooltip.style.left = point.x + 14 + "px";
+        tooltip.style.top = point.y + 14 + "px";
+        moveReadout.textContent = "move " + point.x + "," + point.y;
+      });
+
+      chart.addEventListener("click", (event) => {
+        const point = chartPoint(event);
+        clickReadout.textContent = "click " + point.x + "," + point.y;
+      });
+
+      chart.addEventListener("mouseup", (event) => {
+        const point = chartPoint(event);
+        dropReadout.textContent = "drop " + point.x + "," + point.y;
+      });
+
+      const range = document.getElementById("range");
+      const rangeReadout = document.getElementById("range-readout");
+      range.addEventListener("input", () => {
+        rangeReadout.textContent = range.value;
+      });
+
+      const scroller = document.getElementById("scroller");
+      const scrollerContent = document.getElementById("scroller-content");
+      const wheelReadout = document.getElementById("wheel-readout");
+      for (let index = 0; index < 60; index += 1) {
+        const row = document.createElement("p");
+        row.textContent = "row " + index;
+        scrollerContent.append(row);
+      }
+      scroller.addEventListener("scroll", () => {
+        wheelReadout.textContent = String(Math.round(scroller.scrollTop));
+      });
     </script>
   </body>
 </html>

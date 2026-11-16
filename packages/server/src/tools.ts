@@ -35,6 +35,30 @@ function errorResult(error: unknown): ToolResult {
 
 const tabId = z.number().int().positive().optional().describe("Target tab id. Defaults to the active tab.");
 
+const spaceField = z
+  .enum(["viewport", "page"])
+  .optional()
+  .describe("Coordinate space: viewport CSS pixels by default, or document pixels with page.");
+
+const pointFields = {
+  x: z.number().optional().describe("X in the chosen space. Pass together with y, or leave both out and use ref/selector."),
+  y: z.number().optional().describe("Y in the chosen space. Pass together with x, or leave both out and use ref/selector."),
+  ref: z.string().optional().describe("Element reference from browser_snapshot. Used when x and y are omitted."),
+  selector: z.string().optional().describe("CSS selector. Used when x, y, and ref are omitted."),
+  offsetX: z.number().optional().describe("Pixels added to the element centre on the x axis."),
+  offsetY: z.number().optional().describe("Pixels added to the element centre on the y axis."),
+  space: spaceField,
+};
+
+const pointObject = z.object({
+  x: z.number().optional().describe("X in the chosen space."),
+  y: z.number().optional().describe("Y in the chosen space."),
+  ref: z.string().optional().describe("Element reference to aim at."),
+  selector: z.string().optional().describe("CSS selector to aim at."),
+  offsetX: z.number().optional().describe("Pixels added to the element centre on the x axis."),
+  offsetY: z.number().optional().describe("Pixels added to the element centre on the y axis."),
+});
+
 function targetFields(extra: Record<string, z.ZodType> = {}) {
   return {
     ref: z
@@ -190,10 +214,157 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     "browser_hover",
     {
       title: "Hover",
-      description: "Move the pointer over an element so hover menus and tooltips open.",
-      inputSchema: targetFields(),
+      description:
+        "Move the pointer over an element, or over explicit coordinates, so hover menus and tooltips open. Coordinates are viewport CSS pixels unless space=page. Pass trusted=true to send a real mouse event through the Chrome debugger, which canvas charts usually need.",
+      inputSchema: {
+        x: z.number().optional().describe("Viewport x in CSS pixels. Pass with y to hover a coordinate instead of an element."),
+        y: z.number().optional().describe("Viewport y in CSS pixels. Pass with x."),
+        ref: z.string().optional().describe("Element reference from the latest browser_snapshot, for example e12."),
+        selector: z.string().optional().describe("CSS selector used only when no ref is available."),
+        offsetX: z.number().optional().describe("Pixels added to the element centre on the x axis."),
+        offsetY: z.number().optional().describe("Pixels added to the element centre on the y axis."),
+        space: spaceField,
+        trusted: z.boolean().optional().describe("Send the move through the Chrome debugger instead of a DOM event."),
+        tabId,
+      },
     },
-    async (args) => await call("hover", args),
+    async (args) =>
+      args.x !== undefined || args.y !== undefined || args.trusted === true
+        ? await call("mouse_move", args)
+        : await call("hover", args),
+  );
+
+  server.registerTool(
+    "browser_mouse_move",
+    {
+      title: "Move pointer",
+      description:
+        "Move the real mouse pointer to coordinates or to an element. Coordinates are viewport CSS pixels by default; pass space=page for document coordinates. Use steps>1 when a canvas needs a travel path. Returns the element under the pointer.",
+      inputSchema: {
+        ...pointFields,
+        steps: z.number().int().min(1).max(40).optional().describe("Move events sent while travelling, default 1."),
+        tabId,
+      },
+    },
+    async (args) => await call("mouse_move", args),
+  );
+
+  server.registerTool(
+    "browser_mouse_click",
+    {
+      title: "Click at a point",
+      description:
+        "Click at coordinates or at an element centre with optional offsets, using a real mouse event through the Chrome debugger. Use this when a DOM click does not work, for example on canvas controls.",
+      inputSchema: {
+        ...pointFields,
+        button: z.enum(["left", "right", "middle"]).optional().describe("Mouse button, default left."),
+        clickCount: z.number().int().min(1).max(3).optional().describe("Click count, default 1."),
+        modifiers: z
+          .array(z.enum(["Alt", "Control", "Meta", "Shift"]))
+          .optional()
+          .describe("Keys held during the click."),
+        tabId,
+      },
+    },
+    async (args) => await call("mouse_click", args),
+  );
+
+  server.registerTool(
+    "browser_mouse_down",
+    {
+      title: "Press pointer button",
+      description:
+        "Press and hold a mouse button at coordinates. Pair it with browser_mouse_up for long presses, or use browser_mouse_drag for a complete drag.",
+      inputSchema: {
+        ...pointFields,
+        button: z.enum(["left", "right", "middle"]).optional().describe("Mouse button, default left."),
+        modifiers: z.array(z.enum(["Alt", "Control", "Meta", "Shift"])).optional().describe("Keys held while pressing."),
+        tabId,
+      },
+    },
+    async (args) => await call("mouse_down", args),
+  );
+
+  server.registerTool(
+    "browser_mouse_up",
+    {
+      title: "Release pointer button",
+      description: "Release a mouse button held by browser_mouse_down at coordinates.",
+      inputSchema: {
+        ...pointFields,
+        button: z.enum(["left", "right", "middle"]).optional().describe("Mouse button, default left."),
+        modifiers: z.array(z.enum(["Alt", "Control", "Meta", "Shift"])).optional().describe("Keys held while releasing."),
+        tabId,
+      },
+    },
+    async (args) => await call("mouse_up", args),
+  );
+
+  server.registerTool(
+    "browser_mouse_drag",
+    {
+      title: "Drag",
+      description:
+        "Press at one point, move to another, and release. Use it for sliders, range handles, canvas panning, and selection. Each end takes x and y, or a ref/selector with offsets.",
+      inputSchema: {
+        from: pointObject.describe("Start point."),
+        to: pointObject.describe("End point."),
+        steps: z.number().int().min(1).max(40).optional().describe("Intermediate move events, default 8."),
+        button: z.enum(["left", "right", "middle"]).optional().describe("Mouse button, default left."),
+        modifiers: z.array(z.enum(["Alt", "Control", "Meta", "Shift"])).optional().describe("Keys held during the drag."),
+        space: spaceField,
+        tabId,
+      },
+    },
+    async (args) => await call("mouse_drag", args),
+  );
+
+  server.registerTool(
+    "browser_mouse_wheel",
+    {
+      title: "Scroll wheel",
+      description:
+        "Send a wheel event at coordinates. Use it to zoom a chart, scroll a panel under the pointer, or nudge a wheel-driven slider.",
+      inputSchema: {
+        ...pointFields,
+        deltaX: z.number().optional().describe("Horizontal wheel delta, default 0."),
+        deltaY: z.number().optional().describe("Vertical wheel delta, default 0. One notch is about 100."),
+        modifiers: z.array(z.enum(["Alt", "Control", "Meta", "Shift"])).optional().describe("Keys held while scrolling."),
+        tabId,
+      },
+    },
+    async (args) => await call("mouse_wheel", args),
+  );
+
+  server.registerTool(
+    "browser_pointer_probe",
+    {
+      title: "Probe under the pointer",
+      description:
+        "Move the pointer and report what the page rendered near it: the element stack at the point plus DOM nodes that appeared, moved, or changed text. Use it to tell a DOM tooltip from a canvas-drawn one, and to discover the selector of a tooltip so later reads stay cheap.",
+      inputSchema: {
+        ...pointFields,
+        waitMs: z.number().int().min(0).max(2000).optional().describe("How long to collect changes after the move, default 180."),
+        tabId,
+      },
+    },
+    async (args) => await call("pointer_probe", args),
+  );
+
+  server.registerTool(
+    "browser_get_box",
+    {
+      title: "Element box",
+      description:
+        "Return the viewport box, the document box, the scroll offset, the viewport size, and the device pixel ratio of an element. Use it before aiming coordinates at a canvas or a chart.",
+      inputSchema: {
+        ref: z.string().optional().describe("Element reference from browser_snapshot."),
+        selector: z.string().optional().describe("CSS selector."),
+        scrollIntoView: z.boolean().optional().describe("Scroll the element into view first, default false."),
+        tabId,
+      },
+    },
+    async (args) => await call("get_box", args),
   );
 
   server.registerTool(
@@ -247,31 +418,50 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
     {
       title: "Screenshot",
       description:
-        "Capture the viewport, the full page, or a single element as a PNG. Use this for canvas apps, visual layout checks, or when the accessibility tree is not enough.",
+        "Capture the viewport, the full page, a single element, or a rectangular region as a PNG. Use region to crop a chart cell or a tooltip without touching the filesystem. The result reports the CSS box and the device pixel ratio so pixel positions map back to coordinates.",
       inputSchema: {
         fullPage: z.boolean().optional().describe("Capture the whole scrollable page."),
         ref: z.string().optional().describe("Element reference to capture."),
         selector: z.string().optional().describe("CSS selector of the element to capture."),
+        region: z
+          .object({
+            x: z.number(),
+            y: z.number(),
+            width: z.number(),
+            height: z.number(),
+          })
+          .optional()
+          .describe("Crop rectangle. Relative to the element when ref or selector is given, otherwise viewport or page coordinates."),
+        space: spaceField,
         tabId,
       },
     },
-    async ({ fullPage, ref, selector, tabId: id }) => {
+    async (args) => {
       try {
         const client = await ctx.getClient();
-        const result = (await client.request(
-          "screenshot",
-          { fullPage, ref, selector, tabId: id },
-          45_000,
-        )) as { data?: string; mimeType?: string; width?: number; height?: number; note?: string };
+        const result = (await client.request("screenshot", args as Record<string, unknown>, 45_000)) as {
+          data?: string;
+          mimeType?: string;
+          width?: number;
+          height?: number;
+          css?: { x: number; y: number; width: number; height: number };
+          deviceScaleFactor?: number;
+          viewport?: { width: number; height: number };
+          note?: string;
+        };
         if (!result?.data) throw new Error("The extension returned no image data");
         const mimeType = result.mimeType ?? "image/png";
-        const meta = [result.width && result.height ? `${result.width}x${result.height}` : null, result.note]
-          .filter(Boolean)
-          .join(", ");
+        const parts = [
+          result.width && result.height ? `${result.width}x${result.height}px` : null,
+          result.css ? `css ${result.css.width}x${result.css.height} at ${result.css.x},${result.css.y}` : null,
+          result.deviceScaleFactor ? `scale ${result.deviceScaleFactor}` : null,
+          result.viewport ? `viewport ${result.viewport.width}x${result.viewport.height}` : null,
+          result.note,
+        ].filter(Boolean);
         return {
           content: [
             { type: "image" as const, data: result.data, mimeType },
-            { type: "text" as const, text: meta ? `Screenshot ${meta}` : "Screenshot captured" },
+            { type: "text" as const, text: parts.length > 0 ? `Screenshot ${parts.join(", ")}` : "Screenshot captured" },
           ],
         };
       } catch (error) {

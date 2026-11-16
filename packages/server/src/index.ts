@@ -21,7 +21,7 @@ async function main(): Promise<void> {
   const allowEval = process.env.MCP_BROWSER_ALLOW_EVAL === "1";
 
   const server = new McpServer(
-    { name: "tabrail", version: "0.4.0" },
+    { name: "tabrail", version: "0.5.0" },
     { instructions: INSTRUCTIONS },
   );
 

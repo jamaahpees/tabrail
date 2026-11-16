@@ -88,6 +88,14 @@ test("MCP server lists tools and reports an offline extension", async (t) => {
     "browser_type",
     "browser_press_key",
     "browser_hover",
+    "browser_mouse_move",
+    "browser_mouse_click",
+    "browser_mouse_down",
+    "browser_mouse_up",
+    "browser_mouse_drag",
+    "browser_mouse_wheel",
+    "browser_pointer_probe",
+    "browser_get_box",
     "browser_select_option",
     "browser_scroll",
     "browser_wait_for",
@@ -107,6 +115,15 @@ test("MCP server lists tools and reports an offline extension", async (t) => {
   const snapshotSchema = tools.tools.find((tool) => tool.name === "browser_snapshot");
   assert.ok(snapshotSchema.inputSchema);
   assert.ok(snapshotSchema.inputSchema.properties.mode);
+
+  const dragSchema = tools.tools.find((tool) => tool.name === "browser_mouse_drag");
+  assert.ok(dragSchema.inputSchema);
+  assert.ok(dragSchema.inputSchema.properties.from);
+  assert.ok(dragSchema.inputSchema.properties.to);
+  assert.ok(dragSchema.inputSchema.properties.space);
+
+  const shotSchema = tools.tools.find((tool) => tool.name === "browser_screenshot");
+  assert.ok(shotSchema.inputSchema.properties.region);
 });
 
 test("local pairing only answers extension origins", async (t) => {

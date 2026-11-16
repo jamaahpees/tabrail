@@ -80,7 +80,7 @@ test("drives a real Chrome tab through the bridge", async (t) => {
 
   const status = await client.call("status");
   assert.equal(status.bridge.state, "connected");
-  assert.equal(status.extensionVersion, "0.4.0");
+  assert.equal(status.extensionVersion, "0.5.0");
   await waitUntil(async () => (await client.call("status")).role?.active === true, 8000, "active browser role");
 
   const page = await browser.newPage();
@@ -134,6 +134,121 @@ test("drives a real Chrome tab through the bridge", async (t) => {
 
   const fullShot = await client.call("screenshot", { tabId, fullPage: true });
   assert.ok(isPng(fullShot.data), "full page screenshot is a PNG");
+
+  const box = await client.call("get_box", { tabId, selector: "#chart", scrollIntoView: true });
+  assert.ok(box.viewport.width >= 400, "chart box reports a width");
+  assert.ok(box.viewportSize.width > 0, "chart box reports the viewport size");
+  assert.equal(Math.round(box.page.x - box.viewport.x), Math.round(box.scroll.x), "page and viewport x agree");
+  assert.equal(Math.round(box.page.y - box.viewport.y), Math.round(box.scroll.y), "page and viewport y agree");
+
+  const pageMove = await client.call("mouse_move", {
+    tabId,
+    x: box.page.x + 60,
+    y: box.page.y + 40,
+    space: "page",
+  });
+  assert.ok(
+    Math.abs(pageMove.x - Math.round(box.viewport.x + 60)) <= 1,
+    `page coordinates convert to viewport, got ${pageMove.x}`,
+  );
+
+  const elementMove = await client.call("mouse_move", { tabId, selector: "#chart", offsetX: 20, offsetY: 20 });
+  const settled = await client.call("get_box", { tabId, selector: "#chart" });
+  assert.equal(
+    elementMove.x,
+    Math.round(settled.viewport.x + settled.viewport.width / 2 + 20),
+    "element offset move targets the element centre",
+  );
+
+  const point = { x: Math.round(settled.viewport.x + 140), y: Math.round(settled.viewport.y + 90) };
+  const cell = { x: point.x - Math.round(settled.viewport.x), y: point.y - Math.round(settled.viewport.y) };
+  const moved = await client.call("mouse_move", { tabId, x: point.x, y: point.y, steps: 3 });
+  assert.deepEqual({ x: moved.x, y: moved.y }, point, "move reports the point it landed on");
+
+  const readCell = async (selector) => {
+    const text = (await client.call("get_text", { tabId, selector })).text;
+    const match = text.match(/(-?\d+),(-?\d+)/);
+    assert.ok(match, `expected a coordinate pair in ${selector}, got ${text}`);
+    return { x: Number(match[1]), y: Number(match[2]) };
+  };
+
+  await waitUntil(
+    async () => Math.abs((await readCell("#move-readout")).x - cell.x) <= 1,
+    5000,
+    "move readout matches the pointer",
+  );
+
+  const tooltipText = await client.call("get_text", { tabId, selector: "#tooltip" });
+  assert.match(tooltipText.text, /^cell \d+,\d+$/, "canvas tooltip is readable as DOM text");
+
+  await client.call("mouse_click", { tabId, x: point.x, y: point.y });
+  await waitUntil(
+    async () => Math.abs((await readCell("#click-readout")).x - cell.x) <= 1,
+    5000,
+    "click readout matches the pointer",
+  );
+
+  const dragEnd = { x: point.x + 120, y: point.y };
+  const dragged = await client.call("mouse_drag", { tabId, from: point, to: dragEnd, steps: 6 });
+  assert.deepEqual(dragged.from, point);
+  assert.deepEqual(dragged.to, dragEnd);
+  await waitUntil(
+    async () => Math.abs((await readCell("#drop-readout")).x - (cell.x + 120)) <= 1,
+    5000,
+    "drag released at the end point",
+  );
+
+  const probeBox = await client.call("get_box", { tabId, selector: "#chart", scrollIntoView: true });
+  const probePoint = { x: Math.round(probeBox.viewport.x + 200), y: Math.round(probeBox.viewport.y + 120) };
+  const probe = await client.call("pointer_probe", { tabId, x: probePoint.x, y: probePoint.y, waitMs: 250 });
+  assert.ok(probe.changes.length > 0, "probe reports DOM changes around the pointer");
+  assert.ok(
+    probe.changes.some((entry) => entry.selector === "#tooltip" || /cell \d+,\d+/.test(entry.text)),
+    "probe finds the tooltip that the pointer opened",
+  );
+  assert.match(probe.at_point.top.element, /canvas/, "probe reports the element under the pointer");
+
+  const regionShot = await client.call("screenshot", {
+    tabId,
+    selector: "#chart",
+    region: { x: 0, y: 0, width: 100, height: 60 },
+  });
+  assert.ok(isPng(regionShot.data), "region screenshot is a PNG");
+  assert.equal(regionShot.css.width, 100, "region screenshot keeps the requested width");
+  assert.equal(regionShot.css.height, 60, "region screenshot keeps the requested height");
+
+  const scrollerBox = await client.call("get_box", { tabId, selector: "#scroller", scrollIntoView: true });
+  const wheelPoint = {
+    x: Math.round(scrollerBox.viewport.x + scrollerBox.viewport.width / 2),
+    y: Math.round(scrollerBox.viewport.y + scrollerBox.viewport.height / 2),
+  };
+  await client.call("mouse_wheel", { tabId, x: wheelPoint.x, y: wheelPoint.y, deltaY: 240 });
+  await waitUntil(
+    async () => Number((await client.call("get_text", { tabId, selector: "#wheel-readout" })).text) > 0,
+    5000,
+    "wheel scrolled the panel",
+  );
+
+  const rangeBox = await client.call("get_box", { tabId, selector: "#range", scrollIntoView: true });
+  const rangeStart = {
+    x: Math.round(rangeBox.viewport.x + rangeBox.viewport.width / 2),
+    y: Math.round(rangeBox.viewport.y + rangeBox.viewport.height / 2),
+  };
+  const rangeEnd = { x: Math.round(rangeBox.viewport.x + rangeBox.viewport.width - 6), y: rangeStart.y };
+  await client.call("mouse_drag", { tabId, from: rangeStart, to: rangeEnd, steps: 8 });
+  await waitUntil(
+    async () => Number(await page.$eval("#range", (element) => element.value)) > 50,
+    5000,
+    "drag moved the range slider",
+  );
+
+  await assert.rejects(
+    () => client.call("mouse_move", { tabId, x: -40, y: 20 }),
+    (error) => {
+      assert.equal(error.code, "point_out_of_viewport");
+      return true;
+    },
+  );
 
   const text = await client.call("get_text", { tabId, selector: "#result" });
   assert.match(text.text, /Order placed/);

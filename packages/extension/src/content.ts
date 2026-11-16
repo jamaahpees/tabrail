@@ -219,10 +219,12 @@ function hover(params: Record<string, unknown>): unknown {
     clientX: rect.x + rect.width / 2,
     clientY: rect.y + rect.height / 2,
   };
-  el.dispatchEvent(new PointerEvent("pointerover", { ...init, pointerId: 1, pointerType: "mouse", isPrimary: true }));
-  el.dispatchEvent(new PointerEvent("pointerenter", { ...init, pointerId: 1, pointerType: "mouse", isPrimary: true }));
+  const pointer = { ...init, pointerId: 1, pointerType: "mouse", isPrimary: true };
+  el.dispatchEvent(new PointerEvent("pointerover", pointer));
+  el.dispatchEvent(new PointerEvent("pointerenter", pointer));
   el.dispatchEvent(new MouseEvent("mouseover", init));
   el.dispatchEvent(new MouseEvent("mouseenter", init));
+  el.dispatchEvent(new PointerEvent("pointermove", pointer));
   el.dispatchEvent(new MouseEvent("mousemove", init));
   return { hovered: describeElement(el) };
 }
@@ -337,6 +339,141 @@ function elementBounds(params: Record<string, unknown>): unknown {
   return { ...elementRect(el), element: describeElement(el) };
 }
 
+function cssPath(el: Element): string {
+  if (el.id) return `#${CSS.escape(el.id)}`;
+  const parts: string[] = [];
+  let node: Element | null = el;
+  while (node && node !== document.documentElement && parts.length < 6) {
+    const current: Element = node;
+    const tag = current.tagName.toLowerCase();
+    const parent = current.parentElement;
+    if (!parent) {
+      parts.unshift(tag);
+      break;
+    }
+    const siblings = Array.from(parent.children).filter((child) => child.tagName === current.tagName);
+    parts.unshift(siblings.length > 1 ? `${tag}:nth-of-type(${siblings.indexOf(current) + 1})` : tag);
+    node = parent;
+  }
+  return parts.join(" > ");
+}
+
+function elementBox(params: Record<string, unknown>): unknown {
+  const el = resolveTarget(params);
+  if (params["scrollIntoView"] === true) {
+    el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" as ScrollBehavior });
+  }
+  const rect = elementRect(el);
+  return {
+    element: describeElement(el),
+    selector: cssPath(el),
+    viewport: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+    page: { x: rect.x + rect.scrollX, y: rect.y + rect.scrollY, width: rect.width, height: rect.height },
+    scroll: { x: rect.scrollX, y: rect.scrollY },
+    viewportSize: { width: window.innerWidth, height: window.innerHeight },
+    devicePixelRatio: window.devicePixelRatio,
+  };
+}
+
+function elementsAtPoint(x: number, y: number): unknown {
+  const stack = document.elementsFromPoint(x, y).slice(0, 4);
+  return {
+    cursor: { x, y },
+    top: stack[0] ? { element: describeElement(stack[0]), selector: cssPath(stack[0]) } : null,
+    stack: stack.map((el) => ({ element: describeElement(el), selector: cssPath(el) })),
+  };
+}
+
+interface MutationSample {
+  at: number;
+  selector: string;
+  element: string;
+  text: string;
+  rect: { x: number; y: number; width: number; height: number } | null;
+}
+
+let pointerObserver: MutationObserver | null = null;
+let pointerMutations: MutationSample[] = [];
+
+function sampleNode(target: Node | null): MutationSample | null {
+  if (!target) return null;
+  const el = target.nodeType === Node.ELEMENT_NODE ? (target as Element) : target.parentElement;
+  if (!el || el === document.body || el === document.documentElement) return null;
+
+  const text = ((el as HTMLElement).innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+  if (!text) return null;
+
+  const rect = el.getBoundingClientRect();
+  const visible =
+    rect.width > 0 &&
+    rect.height > 0 &&
+    rect.bottom > 0 &&
+    rect.right > 0 &&
+    rect.top < window.innerHeight &&
+    rect.left < window.innerWidth;
+
+  return {
+    at: Date.now(),
+    selector: cssPath(el),
+    element: describeElement(el),
+    text: visible ? text : "",
+    rect: visible ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
+  };
+}
+
+function pointerStop(): unknown {
+  pointerObserver?.disconnect();
+  pointerObserver = null;
+  return { watching: false };
+}
+
+function mutationStart(): unknown {
+  pointerStop();
+  pointerMutations = [];
+  const root = document.body ?? document.documentElement;
+  if (!root) throw new ActionError("no_document", "The page has no body element.");
+
+  pointerObserver = new MutationObserver((records) => {
+    for (const record of records) {
+      if (pointerMutations.length >= 60) break;
+      const nodes: Node[] = record.type === "childList" ? Array.from(record.addedNodes) : [record.target];
+      for (const node of nodes) {
+        const sample = sampleNode(node);
+        if (!sample) continue;
+        if (pointerMutations.some((entry) => entry.selector === sample.selector)) continue;
+        pointerMutations.push(sample);
+      }
+    }
+  });
+  pointerObserver.observe(root, {
+    subtree: true,
+    childList: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ["style", "class", "hidden"],
+  });
+  return { watching: true, at: Date.now() };
+}
+
+function mutationRead(params: Record<string, unknown>): unknown {
+  const x = num(params["x"]);
+  const y = num(params["y"]);
+  return {
+    watching: pointerObserver !== null,
+    changes: pointerMutations.slice(0, 30),
+    ...(x !== undefined && y !== undefined ? { at_point: elementsAtPoint(x, y) } : {}),
+  };
+}
+
+function elementsAt(params: Record<string, unknown>): unknown {
+  const x = num(params["x"]);
+  const y = num(params["y"]);
+  if (x === undefined || y === undefined) {
+    throw new ActionError("missing_point", "Pass x and y.", "Coordinates are viewport CSS pixels.");
+  }
+  return elementsAtPoint(x, y);
+}
+
 const handlers: Record<string, (params: Record<string, unknown>) => unknown | Promise<unknown>> = {
   snapshot,
   click,
@@ -348,6 +485,11 @@ const handlers: Record<string, (params: Record<string, unknown>) => unknown | Pr
   wait_for: waitFor,
   get_text: getText,
   element_rect: elementBounds,
+  element_box: elementBox,
+  elements_at: elementsAt,
+  mutation_start: mutationStart,
+  mutation_read: mutationRead,
+  mutation_stop: pointerStop,
 };
 
 function init(): void {

@@ -176,15 +176,24 @@ The popup also shows **In use** when this Chrome owns the slot, or **Waiting** w
 | `browser_click` | DOM click, or `trusted: true` through CDP |
 | `browser_type` | Fill a field, works with React and Vue controlled inputs |
 | `browser_press_key` | Enter, Escape, Tab, `Control+A` |
-| `browser_hover` | Open hover menus |
+| `browser_hover` | Open hover menus, by element or by coordinates |
+| `browser_mouse_move` | Real pointer move at coordinates, optional travel `steps` |
+| `browser_mouse_click` | Real click at coordinates or at an element offset |
+| `browser_mouse_down` / `browser_mouse_up` | Hold and release a button, for long presses |
+| `browser_mouse_drag` | Press, travel, release, for sliders and canvas panning |
+| `browser_mouse_wheel` | Wheel at coordinates, for zoom and wheel-driven sliders |
+| `browser_pointer_probe` | Element under the pointer plus DOM nodes it changed |
+| `browser_get_box` | Viewport box, document box, scroll, viewport size, pixel ratio |
 | `browser_select_option` | Native select by value or label |
 | `browser_scroll` | Page or element |
 | `browser_wait_for` | Selector, text, or URL change |
-| `browser_screenshot` | Viewport, full page, or element as PNG |
+| `browser_screenshot` | Viewport, full page, element, or `region` crop as PNG |
 | `browser_console` | Buffered console and exceptions |
 | `browser_network` | Buffered requests with status |
 | `browser_handle_dialog` | Accept or dismiss alert, confirm, prompt |
 | `browser_evaluate` | JavaScript, only with `MCP_BROWSER_ALLOW_EVAL=1` |
+
+Coordinates are viewport CSS pixels by default; pass `space: "page"` for document pixels. The pointer tools need the debugger, so they behave like `browser_click` with `trusted: true`. Checklist and worked canvas example: [docs/pointer.md](docs/pointer.md).
 
 ### Snapshot example
 
@@ -221,6 +230,7 @@ Cookie values never go to the MCP server, never appear in logs, and never leave 
 - Local pairing accepts `chrome-extension://` origins only and rejects web pages with 403
 - Instance labels and ids are client-provided; routing trusts any connection that presents the bridge token
 - Extension allowlist in options, empty means all http and https sites
+- Coordinate pointer control is on by default and can be turned off in options
 - `debugger` attaches lazily and detaches after 30 seconds idle
 - `browser_evaluate` and cookie tools are off by default
 - No telemetry, no analytics, no remote calls except the pages you visit
@@ -231,7 +241,7 @@ Threat model and limits: [SECURITY.md](SECURITY.md).
 
 - `chrome://` pages, the Chrome Web Store, and other extensions cannot be controlled
 - Cross-origin iframe contents are not read; the snapshot shows the `iframe` node
-- Canvas and WebGL apps need screenshots and coordinates
+- Canvas and WebGL apps need `browser_screenshot` plus the `browser_mouse_*` coordinate tools
 - Closed shadow DOM is not read
 - A JavaScript dialog blocks the tab until `browser_handle_dialog`
 - The extension must be loaded, Chrome must be open

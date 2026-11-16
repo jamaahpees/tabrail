@@ -11,7 +11,7 @@ import type {
   ToolError,
 } from "./protocol.js";
 
-const BRIDGE_VERSION = "0.4.0";
+const BRIDGE_VERSION = "0.5.0";
 const PORT = bridgePort();
 const TOKEN = process.env.MCP_BROWSER_TOKEN ?? loadOrCreateToken();
 const ALLOW_EVAL = process.env.MCP_BROWSER_ALLOW_EVAL === "1";

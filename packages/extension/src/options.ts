@@ -18,6 +18,7 @@ const portInput = byId<HTMLInputElement>("port");
 const tokenInput = byId<HTMLInputElement>("token");
 const revealButton = byId<HTMLButtonElement>("reveal");
 const enabledInput = byId<HTMLInputElement>("enabled");
+const allowPointerInput = byId<HTMLInputElement>("allow-pointer");
 const allowlistInput = byId<HTMLTextAreaElement>("allowlist");
 const saveButton = byId<HTMLButtonElement>("save");
 const testButton = byId<HTMLButtonElement>("test");
@@ -78,6 +79,7 @@ async function load(): Promise<void> {
   if (portInput) portInput.value = String(settings.port);
   if (tokenInput) tokenInput.value = settings.token;
   if (enabledInput) enabledInput.checked = settings.enabled;
+  if (allowPointerInput) allowPointerInput.checked = settings.allowPointer;
   if (allowlistInput) allowlistInput.value = settings.allowlist.join("\n");
   renderSnippet();
   await refreshStatus();
@@ -105,7 +107,13 @@ saveButton?.addEventListener("click", () => {
     .filter((line) => line.length > 0);
 
   setFeedback("Saving...");
-  void saveSettings({ port, token, enabled: enabledInput?.checked !== false, allowlist })
+  void saveSettings({
+    port,
+    token,
+    enabled: enabledInput?.checked !== false,
+    allowlist,
+    allowPointer: allowPointerInput?.checked !== false,
+  })
     .then(async () => {
       setStatus("connecting", "Reconnecting");
       setFeedback("Saved. Reconnecting to the bridge.");

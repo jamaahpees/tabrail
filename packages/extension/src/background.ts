@@ -7,7 +7,7 @@ import type {
 } from "./protocol.js";
 import { DEFAULT_SETTINGS, getSettings, originAllowed, saveSettings, type Settings } from "./settings.js";
 
-const EXTENSION_VERSION = "0.4.0";
+const EXTENSION_VERSION = "0.5.0";
 const RECONNECT_CAP_MS = 30_000;
 const CDP_IDLE_DETACH_MS = 30_000;
 const BLOCKED_SCHEME = /^(chrome|chrome-extension|edge|about|devtools|view-source|file|data|blob):/i;
@@ -345,7 +345,26 @@ async function dispatch(method: string, params: Record<string, unknown>): Promis
     case "press_key":
       return await withContent(params, "press_key");
     case "hover":
+      if (params["x"] !== undefined || params["y"] !== undefined || params["trusted"] === true) {
+        return await mouseMove(params);
+      }
       return await withContent(params, "hover");
+    case "mouse_move":
+      return await mouseMove(params);
+    case "mouse_click":
+      return await mouseClick(params);
+    case "mouse_down":
+      return await mouseButton(params, "mousePressed");
+    case "mouse_up":
+      return await mouseButton(params, "mouseReleased");
+    case "mouse_drag":
+      return await mouseDrag(params);
+    case "mouse_wheel":
+      return await mouseWheel(params);
+    case "pointer_probe":
+      return await pointerProbe(params);
+    case "get_box":
+      return await getBox(params);
     case "select_option":
       return await withContent(params, "select_option");
     case "scroll":
@@ -633,12 +652,357 @@ async function click(params: Record<string, unknown>): Promise<unknown> {
   return { clicked: result.element, trusted: true, at: { x, y } };
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface ViewportMetrics {
+  pageX: number;
+  pageY: number;
+  width: number;
+  height: number;
+  scale: number;
+}
+
+const MODIFIER_BITS: Record<string, number> = { Alt: 1, Control: 2, Meta: 4, Shift: 8 };
+const pointerPositions = new Map<number, Point>();
+
+function tabIdOf(tab: chrome.tabs.Tab): number {
+  if (tab.id === undefined) throw new ActionError("tab_not_found", "The tab has no id.");
+  return tab.id;
+}
+
+function assertPointerAllowed(): void {
+  if (settings.allowPointer) return;
+  throw new ActionError(
+    "pointer_disabled",
+    "Coordinate pointer control is turned off in the extension options.",
+    'Enable "Allow coordinate pointer control" on the TabRail options page.',
+  );
+}
+
+async function viewportMetrics(tabId: number): Promise<ViewportMetrics> {
+  const metrics = (await cdp(tabId, "Page.getLayoutMetrics")) as {
+    cssLayoutViewport?: { pageX?: number; pageY?: number; clientWidth?: number; clientHeight?: number };
+    cssVisualViewport?: { scale?: number };
+  };
+  const layout = metrics.cssLayoutViewport;
+  if (!layout?.clientWidth || !layout?.clientHeight) {
+    throw new ActionError("layout_metrics_failed", "Chrome did not return the viewport size.");
+  }
+  return {
+    pageX: layout.pageX ?? 0,
+    pageY: layout.pageY ?? 0,
+    width: layout.clientWidth,
+    height: layout.clientHeight,
+    scale: metrics.cssVisualViewport?.scale ?? 1,
+  };
+}
+
+function numericPoint(source: Record<string, unknown>): Point | null {
+  const x = source["x"];
+  const y = source["y"];
+  if (typeof x !== "number" || typeof y !== "number") return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
+function modifierMask(value: unknown): number {
+  if (!Array.isArray(value)) return 0;
+  let mask = 0;
+  for (const item of value) {
+    if (typeof item === "string") mask |= MODIFIER_BITS[item] ?? 0;
+  }
+  return mask;
+}
+
+function normalizeButton(value: unknown): "left" | "right" | "middle" {
+  return value === "right" || value === "middle" ? value : "left";
+}
+
+function buttonBit(button: string): number {
+  if (button === "right") return 2;
+  if (button === "middle") return 4;
+  return 1;
+}
+
+async function resolvePoint(
+  tab: chrome.tabs.Tab,
+  source: Record<string, unknown>,
+): Promise<{ point: Point; metrics: ViewportMetrics }> {
+  const tabId = tabIdOf(tab);
+  const metrics = await viewportMetrics(tabId);
+
+  let point = numericPoint(source);
+  if (point) {
+    if (source["space"] === "page") {
+      point = { x: point.x - metrics.pageX, y: point.y - metrics.pageY };
+    }
+  } else {
+    const hasTarget = typeof source["ref"] === "string" || typeof source["selector"] === "string";
+    if (!hasTarget) {
+      throw new ActionError(
+        "missing_point",
+        "Pass x and y, or a ref/selector with optional offsetX and offsetY.",
+        "Call browser_get_box when you need the box of an element before aiming at it.",
+      );
+    }
+    const rect = (await contentRpc(tab, "element_rect", source)) as {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    const offsetX = typeof source["offsetX"] === "number" ? source["offsetX"] : 0;
+    const offsetY = typeof source["offsetY"] === "number" ? source["offsetY"] : 0;
+    point = { x: rect.x + rect.width / 2 + offsetX, y: rect.y + rect.height / 2 + offsetY };
+  }
+
+  if (point.x < 0 || point.y < 0 || point.x > metrics.width || point.y > metrics.height) {
+    throw new ActionError(
+      "point_out_of_viewport",
+      `${Math.round(point.x)},${Math.round(point.y)} is outside the ${metrics.width}x${metrics.height} viewport.`,
+      "Coordinates are viewport CSS pixels unless space=page is passed. Scroll the page or correct the point.",
+    );
+  }
+
+  return { point: { x: Math.round(point.x), y: Math.round(point.y) }, metrics };
+}
+
+async function emitMouse(
+  tabId: number,
+  type: string,
+  point: Point,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  await cdp(tabId, "Input.dispatchMouseEvent", { type, x: point.x, y: point.y, ...extra });
+}
+
+async function elementAtPoint(tab: chrome.tabs.Tab, point: Point): Promise<unknown> {
+  try {
+    const result = (await contentRpc(tab, "elements_at", { x: point.x, y: point.y })) as { top?: unknown };
+    return result?.top ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function stepCount(value: unknown, fallback: number): number {
+  const raw = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : fallback;
+  return Math.max(1, Math.min(40, raw));
+}
+
+async function mouseMove(params: Record<string, unknown>): Promise<unknown> {
+  assertPointerAllowed();
+  const tab = await requireTab(params);
+  assertControllable(tab);
+  const tabId = tabIdOf(tab);
+  const { point, metrics } = await resolvePoint(tab, params);
+  const steps = stepCount(params["steps"], 1);
+  const start = pointerPositions.get(tabId) ?? point;
+
+  for (let step = 1; step <= steps; step += 1) {
+    const ratio = step / steps;
+    const x = Math.round(start.x + (point.x - start.x) * ratio);
+    const y = Math.round(start.y + (point.y - start.y) * ratio);
+    await emitMouse(tabId, "mouseMoved", { x, y }, { button: "none", buttons: 0 });
+    if (steps > 1) await sleep(16);
+  }
+
+  pointerPositions.set(tabId, point);
+  return {
+    ...point,
+    steps,
+    viewport: { width: metrics.width, height: metrics.height },
+    element: await elementAtPoint(tab, point),
+  };
+}
+
+async function mouseClick(params: Record<string, unknown>): Promise<unknown> {
+  assertPointerAllowed();
+  const tab = await requireTab(params);
+  assertControllable(tab);
+  const tabId = tabIdOf(tab);
+  const { point } = await resolvePoint(tab, params);
+  const button = normalizeButton(params["button"]);
+  const clickCount = Math.max(1, Math.min(3, stepCount(params["clickCount"], 1)));
+  const modifiers = modifierMask(params["modifiers"]);
+
+  await emitMouse(tabId, "mouseMoved", point, { button: "none", buttons: 0, modifiers });
+  await emitMouse(tabId, "mousePressed", point, { button, buttons: buttonBit(button), clickCount, modifiers });
+  await emitMouse(tabId, "mouseReleased", point, { button, buttons: 0, clickCount, modifiers });
+
+  pointerPositions.set(tabId, point);
+  return { clicked: point, button, clickCount, element: await elementAtPoint(tab, point) };
+}
+
+async function mouseButton(params: Record<string, unknown>, type: "mousePressed" | "mouseReleased"): Promise<unknown> {
+  assertPointerAllowed();
+  const tab = await requireTab(params);
+  assertControllable(tab);
+  const tabId = tabIdOf(tab);
+  const { point } = await resolvePoint(tab, params);
+  const button = normalizeButton(params["button"]);
+  const modifiers = modifierMask(params["modifiers"]);
+
+  if (type === "mousePressed") {
+    await emitMouse(tabId, "mouseMoved", point, { button: "none", buttons: 0, modifiers });
+  }
+  await emitMouse(tabId, type, point, {
+    button,
+    buttons: type === "mousePressed" ? buttonBit(button) : 0,
+    clickCount: 1,
+    modifiers,
+  });
+
+  pointerPositions.set(tabId, point);
+  return { [type === "mousePressed" ? "pressed" : "released"]: point, button, element: await elementAtPoint(tab, point) };
+}
+
+async function mouseDrag(params: Record<string, unknown>): Promise<unknown> {
+  assertPointerAllowed();
+  const tab = await requireTab(params);
+  assertControllable(tab);
+  const tabId = tabIdOf(tab);
+
+  const space = params["space"];
+  const fromSource = { ...((params["from"] ?? {}) as Record<string, unknown>) };
+  const toSource = { ...((params["to"] ?? {}) as Record<string, unknown>) };
+  if (space !== undefined) {
+    if (fromSource["space"] === undefined) fromSource["space"] = space;
+    if (toSource["space"] === undefined) toSource["space"] = space;
+  }
+  if (!numericPoint(fromSource) && fromSource["ref"] === undefined && fromSource["selector"] === undefined) {
+    throw new ActionError("missing_point", "Pass from with x and y.", "Example: from {x:100,y:200}, to {x:300,y:200}.");
+  }
+  if (!numericPoint(toSource) && toSource["ref"] === undefined && toSource["selector"] === undefined) {
+    throw new ActionError("missing_point", "Pass to with x and y.", "Example: from {x:100,y:200}, to {x:300,y:200}.");
+  }
+
+  const from = (await resolvePoint(tab, fromSource)).point;
+  const to = (await resolvePoint(tab, toSource)).point;
+  const button = normalizeButton(params["button"]);
+  const modifiers = modifierMask(params["modifiers"]);
+  const steps = stepCount(params["steps"], 8);
+
+  await emitMouse(tabId, "mouseMoved", from, { button: "none", buttons: 0, modifiers });
+  await emitMouse(tabId, "mousePressed", from, { button, buttons: buttonBit(button), clickCount: 1, modifiers });
+  for (let step = 1; step <= steps; step += 1) {
+    const ratio = step / steps;
+    const x = Math.round(from.x + (to.x - from.x) * ratio);
+    const y = Math.round(from.y + (to.y - from.y) * ratio);
+    await emitMouse(tabId, "mouseMoved", { x, y }, { button, buttons: buttonBit(button), modifiers });
+    await sleep(16);
+  }
+  await emitMouse(tabId, "mouseReleased", to, { button, buttons: 0, clickCount: 1, modifiers });
+
+  pointerPositions.set(tabId, to);
+  return { from, to, steps, button, element: await elementAtPoint(tab, to) };
+}
+
+async function mouseWheel(params: Record<string, unknown>): Promise<unknown> {
+  assertPointerAllowed();
+  const tab = await requireTab(params);
+  assertControllable(tab);
+  const tabId = tabIdOf(tab);
+  const { point } = await resolvePoint(tab, params);
+
+  const deltaX = typeof params["deltaX"] === "number" && Number.isFinite(params["deltaX"]) ? params["deltaX"] : 0;
+  const deltaY = typeof params["deltaY"] === "number" && Number.isFinite(params["deltaY"]) ? params["deltaY"] : 0;
+  if (deltaX === 0 && deltaY === 0) {
+    throw new ActionError("missing_delta", "Pass deltaX or deltaY.", "A typical wheel notch is deltaY 100.");
+  }
+
+  const modifiers = modifierMask(params["modifiers"]);
+  await emitMouse(tabId, "mouseMoved", point, { button: "none", buttons: 0, modifiers });
+  await cdp(tabId, "Input.dispatchMouseEvent", {
+    type: "mouseWheel",
+    x: point.x,
+    y: point.y,
+    deltaX,
+    deltaY,
+    button: "none",
+    buttons: 0,
+    modifiers,
+  });
+
+  pointerPositions.set(tabId, point);
+  return { wheel: point, deltaX, deltaY, element: await elementAtPoint(tab, point) };
+}
+
+async function pointerProbe(params: Record<string, unknown>): Promise<unknown> {
+  assertPointerAllowed();
+  const tab = await requireTab(params);
+  assertControllable(tab);
+  const tabId = tabIdOf(tab);
+  const { point } = await resolvePoint(tab, params);
+  const rawWait = typeof params["waitMs"] === "number" ? params["waitMs"] : 180;
+  const waitMs = Math.max(0, Math.min(2000, Math.round(rawWait)));
+
+  await contentRpc(tab, "mutation_start", {});
+  try {
+    await emitMouse(tabId, "mouseMoved", point, { button: "none", buttons: 0 });
+    pointerPositions.set(tabId, point);
+    if (waitMs > 0) await sleep(waitMs);
+    return await contentRpc(tab, "mutation_read", { x: point.x, y: point.y });
+  } finally {
+    await contentRpc(tab, "mutation_stop", {}).catch(() => undefined);
+  }
+}
+
+async function getBox(params: Record<string, unknown>): Promise<unknown> {
+  const tab = await requireTab(params);
+  return await contentRpc(tab, "element_box", params);
+}
+
+function readRegion(value: unknown): { x: number; y: number; width: number; height: number } | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const x = source["x"];
+  const y = source["y"];
+  const width = source["width"];
+  const height = source["height"];
+  if (
+    typeof x !== "number" ||
+    typeof y !== "number" ||
+    typeof width !== "number" ||
+    typeof height !== "number" ||
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height)
+  ) {
+    throw new ActionError("bad_region", "region needs numeric x, y, width, and height.");
+  }
+  if (width < 1 || height < 1) {
+    throw new ActionError("bad_region", "region width and height must be at least 1.");
+  }
+  return { x, y, width, height };
+}
+
+function pngSize(base64: string): { width: number; height: number } | null {
+  try {
+    const header = atob(base64.slice(0, 96));
+    if (header.length < 24) return null;
+    if (header.charCodeAt(0) !== 0x89 || header.slice(1, 4) !== "PNG") return null;
+    const code = (index: number): number => header.charCodeAt(index);
+    const width = ((code(16) << 24) | (code(17) << 16) | (code(18) << 8) | code(19)) >>> 0;
+    const height = ((code(20) << 24) | (code(21) << 16) | (code(22) << 8) | code(23)) >>> 0;
+    if (!width || !height) return null;
+    return { width, height };
+  } catch {
+    return null;
+  }
+}
+
 async function screenshot(params: Record<string, unknown>): Promise<unknown> {
   const tab = await requireTab(params);
-  const tabId = tab.id;
-  if (tabId === undefined) throw new ActionError("tab_not_found", "The tab has no id.");
+  const tabId = tabIdOf(tab);
 
   const hasTarget = typeof params["ref"] === "string" || typeof params["selector"] === "string";
+  const region = readRegion(params["region"]);
+  const metrics = await viewportMetrics(tabId);
   let clip: Clip | undefined;
   let note: string | undefined;
 
@@ -654,19 +1018,39 @@ async function screenshot(params: Record<string, unknown>): Promise<unknown> {
     if (!rect || rect.width < 1 || rect.height < 1) {
       throw new ActionError("element_not_visible", "The element has no visible box to capture.");
     }
+    const originX = rect.x + rect.scrollX;
+    const originY = rect.y + rect.scrollY;
+    clip = region
+      ? {
+          x: Math.round(originX + region.x),
+          y: Math.round(originY + region.y),
+          width: Math.max(1, Math.round(region.width)),
+          height: Math.max(1, Math.round(region.height)),
+          scale: 1,
+        }
+      : {
+          x: Math.round(originX),
+          y: Math.round(originY),
+          width: Math.ceil(rect.width),
+          height: Math.ceil(rect.height),
+          scale: 1,
+        };
+  } else if (region) {
+    const offsetX = params["space"] === "page" ? 0 : metrics.pageX;
+    const offsetY = params["space"] === "page" ? 0 : metrics.pageY;
     clip = {
-      x: Math.round(rect.x + rect.scrollX),
-      y: Math.round(rect.y + rect.scrollY),
-      width: Math.ceil(rect.width),
-      height: Math.ceil(rect.height),
+      x: Math.round(region.x + offsetX),
+      y: Math.round(region.y + offsetY),
+      width: Math.max(1, Math.round(region.width)),
+      height: Math.max(1, Math.round(region.height)),
       scale: 1,
     };
   } else if (params["fullPage"] === true) {
-    const metrics = (await cdp(tabId, "Page.getLayoutMetrics")) as {
+    const layout = (await cdp(tabId, "Page.getLayoutMetrics")) as {
       cssContentSize?: { width: number; height: number };
       contentSize?: { width: number; height: number };
     };
-    const size = metrics.cssContentSize ?? metrics.contentSize;
+    const size = layout.cssContentSize ?? layout.contentSize;
     if (!size) throw new ActionError("layout_metrics_failed", "Chrome did not return the page size.");
     const maxHeight = 12_000;
     const height = Math.min(size.height, maxHeight);
@@ -683,11 +1067,24 @@ async function screenshot(params: Record<string, unknown>): Promise<unknown> {
 
   if (!capture?.data) throw new ActionError("screenshot_failed", "Chrome returned no image data.");
 
+  const css = {
+    x: clip?.x ?? 0,
+    y: clip?.y ?? 0,
+    width: clip?.width ?? metrics.width,
+    height: clip?.height ?? metrics.height,
+  };
+  const pixels = pngSize(capture.data);
+  const deviceScaleFactor =
+    pixels && css.width > 0 ? Math.round((pixels.width / css.width) * 100) / 100 : metrics.scale;
+
   return {
     data: capture.data,
     mimeType: "image/png",
-    width: clip?.width,
-    height: clip?.height,
+    width: pixels?.width ?? css.width,
+    height: pixels?.height ?? css.height,
+    css,
+    deviceScaleFactor,
+    viewport: { width: metrics.width, height: metrics.height, pageX: metrics.pageX, pageY: metrics.pageY },
     note,
   };
 }
@@ -800,7 +1197,12 @@ async function extensionStatus(): Promise<unknown> {
     debuggerAttachedTabs: [...attachedTabs.keys()],
     pendingDialogs: [...pendingDialogs.entries()].map(([tabId, dialog]) => ({ tabId, ...dialog })),
     allowEval,
-    settings: { port: settings.port, enabled: settings.enabled, allowlist: settings.allowlist },
+    settings: {
+      port: settings.port,
+      enabled: settings.enabled,
+      allowlist: settings.allowlist,
+      allowPointer: settings.allowPointer,
+    },
   };
 }
 
