@@ -474,6 +474,170 @@ function elementsAt(params: Record<string, unknown>): unknown {
   return elementsAtPoint(x, y);
 }
 
+interface PickRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function clampTo(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function pickRegion(params: Record<string, unknown>): Promise<unknown> {
+  const hasTarget = Boolean(str(params["ref"]) || str(params["selector"]));
+  const target = hasTarget ? resolveTarget(params) : null;
+  const targetRect = target ? elementRect(target) : null;
+  const timeoutMs = Math.max(5_000, Math.min(300_000, num(params["timeoutMs"]) ?? 60_000));
+
+  return new Promise((resolve, reject) => {
+    const area: PickRect = targetRect
+      ? { x: targetRect.x, y: targetRect.y, width: targetRect.width, height: targetRect.height }
+      : { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+
+    const overlay = document.createElement("div");
+    overlay.dataset["tabrailPick"] = "1";
+    overlay.style.cssText = [
+      "position:fixed",
+      `left:${area.x}px`,
+      `top:${area.y}px`,
+      `width:${Math.max(1, area.width)}px`,
+      `height:${Math.max(1, area.height)}px`,
+      "z-index:2147483647",
+      "cursor:crosshair",
+      "background:rgba(17,17,17,0.10)",
+      "touch-action:none",
+    ].join(";");
+
+    const box = document.createElement("div");
+    box.style.cssText =
+      "position:absolute;border:1px dashed #fff;background:rgba(255,255,255,0.14);pointer-events:none;display:none;";
+
+    const label = document.createElement("div");
+    label.style.cssText =
+      "position:absolute;padding:2px 6px;font:12px/1.4 system-ui,sans-serif;background:#111;color:#fff;pointer-events:none;white-space:nowrap;display:none;border-radius:3px;";
+
+    overlay.append(box, label);
+
+    let start: PickRect | null = null;
+    let timer = 0;
+    let settled = false;
+
+    const cleanup = (): void => {
+      window.clearTimeout(timer);
+      window.removeEventListener("keydown", onKey, true);
+      overlay.remove();
+    };
+
+    const finish = (result: unknown): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+
+    const pointAt = (event: PointerEvent): PickRect => ({
+      x: Math.round(clampTo(event.clientX, area.x, area.x + area.width)),
+      y: Math.round(clampTo(event.clientY, area.y, area.y + area.height)),
+      width: 0,
+      height: 0,
+    });
+
+    const selectionAt = (event: PointerEvent): PickRect => {
+      const point = pointAt(event);
+      if (!start) return point;
+      return {
+        x: Math.min(start.x, point.x),
+        y: Math.min(start.y, point.y),
+        width: Math.abs(point.x - start.x),
+        height: Math.abs(point.y - start.y),
+      };
+    };
+
+    const paint = (rect: PickRect): void => {
+      if (rect.width < 1 || rect.height < 1) {
+        box.style.display = "none";
+        label.style.display = "none";
+        return;
+      }
+      box.style.display = "block";
+      box.style.left = `${rect.x - area.x}px`;
+      box.style.top = `${rect.y - area.y}px`;
+      box.style.width = `${rect.width}px`;
+      box.style.height = `${rect.height}px`;
+
+      label.style.display = "block";
+      label.textContent = `${rect.x},${rect.y}  ${rect.width}x${rect.height}`;
+      const above = rect.y - area.y - 22;
+      label.style.left = `${rect.x - area.x}px`;
+      label.style.top = `${above < 0 ? rect.y - area.y + rect.height + 4 : above}px`;
+    };
+
+    function onKey(event: KeyboardEvent): void {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      finish({ cancelled: true });
+    }
+
+    overlay.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      start = pointAt(event);
+      overlay.setPointerCapture(event.pointerId);
+      paint({ ...start, width: 0, height: 0 });
+    });
+
+    overlay.addEventListener("pointermove", (event) => {
+      paint(selectionAt(event));
+    });
+
+    overlay.addEventListener("pointerup", (event) => {
+      const rect = selectionAt(event);
+      const viewport = {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      };
+      if (viewport.width < 2 || viewport.height < 2) {
+        finish({ cancelled: true, note: "The drag was too small to count as a region." });
+        return;
+      }
+      finish({
+        cancelled: false,
+        viewport,
+        page: {
+          x: viewport.x + Math.round(window.scrollX),
+          y: viewport.y + Math.round(window.scrollY),
+          width: viewport.width,
+          height: viewport.height,
+        },
+        scroll: { x: Math.round(window.scrollX), y: Math.round(window.scrollY) },
+        viewportSize: { width: window.innerWidth, height: window.innerHeight },
+        devicePixelRatio: window.devicePixelRatio,
+        element: target ? describeElement(target) : null,
+      });
+    });
+
+    window.addEventListener("keydown", onKey, true);
+    (document.body ?? document.documentElement).append(overlay);
+
+    timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(
+        new ActionError(
+          "pick_timeout",
+          `No region was selected within ${Math.round(timeoutMs / 1000)}s.`,
+          "Ask the person to drag a box over the page, or call browser_pick_region again.",
+        ),
+      );
+    }, timeoutMs);
+  });
+}
+
 const handlers: Record<string, (params: Record<string, unknown>) => unknown | Promise<unknown>> = {
   snapshot,
   click,
@@ -487,6 +651,7 @@ const handlers: Record<string, (params: Record<string, unknown>) => unknown | Pr
   element_rect: elementBounds,
   element_box: elementBox,
   elements_at: elementsAt,
+  pick_region: pickRegion,
   mutation_start: mutationStart,
   mutation_read: mutationRead,
   mutation_stop: pointerStop,

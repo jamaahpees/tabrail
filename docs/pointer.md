@@ -38,8 +38,38 @@ coordinate = css.x + (pixelX / deviceScaleFactor)
 | `browser_mouse_wheel` | Wheel at a point. Chart zoom, panel scroll, wheel-driven sliders |
 | `browser_pointer_probe` | Move, then report the element stack and the DOM nodes that changed near the pointer |
 | `browser_get_box` | Box of an element in viewport and page space |
+| `browser_pick_region` | Overlay a crosshair, let the person drag the rectangle, return its coordinates and optionally a PNG |
 
 Aim at an element instead of computing pixels by passing `ref` or `selector` with optional `offsetX`/`offsetY`. The point is the element centre plus the offsets, and the element is scrolled into view first.
+
+## Pick a region by hand
+
+Guessing coordinates from a screenshot is the slow path. `browser_pick_region` puts a crosshair over the page and lets the person drag the exact rectangle.
+
+```text
+picked = browser_pick_region { capture: true }
+```
+
+It returns:
+
+```json
+{
+  "cancelled": false,
+  "viewport": { "x": 412, "y": 233, "width": 320, "height": 160 },
+  "page": { "x": 412, "y": 233, "width": 320, "height": 160 },
+  "scroll": { "x": 0, "y": 0 },
+  "viewportSize": { "width": 1920, "height": 940 },
+  "devicePixelRatio": 1,
+  "element": "canvas \"Liquidation heatmap\""
+}
+```
+
+- Pass `ref` or `selector` to confine the overlay to one element, so the person can only pick inside the chart.
+- `capture: true` also returns a PNG of that rectangle, already cropped.
+- Escape cancels and the tool reports `cancelled: true`, not an error.
+- The result is exactly what `browser_screenshot { region }` and the `browser_mouse_*` tools expect, so no conversion is needed.
+
+Use it when a person is present. When nobody is watching, fall back to `browser_get_box` plus arithmetic.
 
 ## Checklist
 

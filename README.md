@@ -184,6 +184,7 @@ The popup also shows **In use** when this Chrome owns the slot, or **Waiting** w
 | `browser_mouse_wheel` | Wheel at coordinates, for zoom and wheel-driven sliders |
 | `browser_pointer_probe` | Element under the pointer plus DOM nodes it changed |
 | `browser_get_box` | Viewport box, document box, scroll, viewport size, pixel ratio |
+| `browser_pick_region` | Drag a rectangle in Chrome, get its coordinates and an optional PNG |
 | `browser_select_option` | Native select by value or label |
 | `browser_scroll` | Page or element |
 | `browser_wait_for` | Selector, text, or URL change |

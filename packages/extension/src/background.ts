@@ -365,6 +365,8 @@ async function dispatch(method: string, params: Record<string, unknown>): Promis
       return await pointerProbe(params);
     case "get_box":
       return await getBox(params);
+    case "pick_region":
+      return await pickRegion(params);
     case "select_option":
       return await withContent(params, "select_option");
     case "scroll":
@@ -954,6 +956,24 @@ async function pointerProbe(params: Record<string, unknown>): Promise<unknown> {
 async function getBox(params: Record<string, unknown>): Promise<unknown> {
   const tab = await requireTab(params);
   return await contentRpc(tab, "element_box", params);
+}
+
+interface PickedRegion {
+  cancelled?: boolean;
+  viewport?: { x: number; y: number; width: number; height: number };
+}
+
+async function pickRegion(params: Record<string, unknown>): Promise<unknown> {
+  const tab = await requireTab(params);
+  assertControllable(tab);
+  const tabId = tabIdOf(tab);
+
+  const picked = (await contentRpc(tab, "pick_region", params)) as PickedRegion;
+  if (!picked || picked.cancelled || !picked.viewport) return picked;
+  if (params["capture"] !== true) return picked;
+
+  const shot = (await screenshot({ tabId, region: picked.viewport, space: "viewport" })) as Record<string, unknown>;
+  return { ...picked, screenshot: shot };
 }
 
 function readRegion(value: unknown): { x: number; y: number; width: number; height: number } | null {

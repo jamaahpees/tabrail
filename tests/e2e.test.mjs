@@ -217,6 +217,27 @@ test("drives a real Chrome tab through the bridge", async (t) => {
   assert.equal(regionShot.css.width, 100, "region screenshot keeps the requested width");
   assert.equal(regionShot.css.height, 60, "region screenshot keeps the requested height");
 
+  const pickFrom = { x: Math.round(probeBox.viewport.x + 40), y: Math.round(probeBox.viewport.y + 40) };
+  const pickCall = client.call("pick_region", { tabId, capture: true, timeoutMs: 20_000 });
+  await sleep(600);
+  await page.mouse.move(pickFrom.x, pickFrom.y);
+  await page.mouse.down();
+  await page.mouse.move(pickFrom.x + 140, pickFrom.y + 100, { steps: 6 });
+  await page.mouse.up();
+  const picked = await pickCall;
+  assert.equal(picked.cancelled, false, "pick returned a region");
+  assert.ok(Math.abs(picked.viewport.width - 140) <= 2, `picked width ${picked.viewport.width}`);
+  assert.ok(Math.abs(picked.viewport.height - 100) <= 2, `picked height ${picked.viewport.height}`);
+  assert.equal(Math.round(picked.page.x - picked.viewport.x), Math.round(picked.scroll.x), "picked page x agrees");
+  assert.ok(isPng(picked.screenshot.data), "picked region captured as a PNG");
+  assert.equal(picked.screenshot.css.width, picked.viewport.width, "picked screenshot matches the region");
+
+  const cancelCall = client.call("pick_region", { tabId, timeoutMs: 20_000 });
+  await sleep(600);
+  await page.keyboard.press("Escape");
+  const cancelled = await cancelCall;
+  assert.equal(cancelled.cancelled, true, "Escape cancels the pick");
+
   const scrollerBox = await client.call("get_box", { tabId, selector: "#scroller", scrollIntoView: true });
   const wheelPoint = {
     x: Math.round(scrollerBox.viewport.x + scrollerBox.viewport.width / 2),

@@ -26,3 +26,4 @@
 - Call `browser_snapshot` before clicking or typing
 - For canvas pages, call `browser_get_box` and then the `browser_mouse_*` tools; hover by `ref` alone does not move a real pointer
 - Use `browser_pointer_probe` to tell a DOM tooltip from a canvas-drawn one before sampling a grid
+- When a person is watching, `browser_pick_region` returns the exact rectangle instead of guessing from a screenshot

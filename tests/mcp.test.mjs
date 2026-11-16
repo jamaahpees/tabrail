@@ -96,6 +96,7 @@ test("MCP server lists tools and reports an offline extension", async (t) => {
     "browser_mouse_wheel",
     "browser_pointer_probe",
     "browser_get_box",
+    "browser_pick_region",
     "browser_select_option",
     "browser_scroll",
     "browser_wait_for",

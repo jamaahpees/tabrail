@@ -368,6 +368,61 @@ export function registerTools(server: McpServer, ctx: ToolContext): void {
   );
 
   server.registerTool(
+    "browser_pick_region",
+    {
+      title: "Pick a region by hand",
+      description:
+        "Overlay a crosshair and let the person in Chrome drag the rectangle they want. Returns the viewport rectangle, the page rectangle, the scroll offset, the pixel ratio, and optionally a PNG of the area, so the numbers can go straight into browser_screenshot (region) or the browser_mouse_* tools. Pass ref or selector to limit the overlay to one element. Escape cancels. Ask the person to drag before you assume the call is stuck.",
+      inputSchema: {
+        ref: z.string().optional().describe("Limit the overlay to this element from browser_snapshot."),
+        selector: z.string().optional().describe("Limit the overlay to this CSS selector."),
+        capture: z.boolean().optional().describe("Return a PNG of the chosen area, default false."),
+        timeoutMs: z.number().int().min(5000).max(300000).optional().describe("How long to wait for the drag, default 60000."),
+        tabId,
+      },
+    },
+    async (args) => {
+      try {
+        const client = await ctx.getClient();
+        const result = (await client.request("pick_region", args as Record<string, unknown>, 305_000)) as {
+          cancelled?: boolean;
+          viewport?: { x: number; y: number; width: number; height: number };
+          page?: { x: number; y: number; width: number; height: number };
+          scroll?: { x: number; y: number };
+          viewportSize?: { width: number; height: number };
+          devicePixelRatio?: number;
+          element?: string | null;
+          note?: string;
+          screenshot?: { data?: string; mimeType?: string; width?: number; height?: number };
+        };
+
+        const summary = {
+          cancelled: result.cancelled === true,
+          viewport: result.viewport ?? null,
+          page: result.page ?? null,
+          scroll: result.scroll ?? null,
+          viewportSize: result.viewportSize ?? null,
+          devicePixelRatio: result.devicePixelRatio ?? null,
+          element: result.element ?? null,
+          note: result.note ?? null,
+          screenshot: result.screenshot?.data
+            ? { width: result.screenshot.width, height: result.screenshot.height, mimeType: result.screenshot.mimeType }
+            : null,
+        };
+
+        const content: ContentBlock[] = [];
+        if (result.screenshot?.data) {
+          content.push({ type: "image", data: result.screenshot.data, mimeType: result.screenshot.mimeType ?? "image/png" });
+        }
+        content.push({ type: "text", text: JSON.stringify(summary, null, 2) });
+        return { content };
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.registerTool(
     "browser_select_option",
     {
       title: "Select option",
