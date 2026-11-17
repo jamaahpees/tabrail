@@ -60,6 +60,31 @@ const versionLabel = byId<HTMLSpanElement>("version");
 const optionsLink = byId<HTMLAnchorElement>("options-link");
 const cookiesLink = byId<HTMLAnchorElement>("cookies-link");
 
+const pickAreaButton = byId<HTMLButtonElement>("pick-area");
+const pickCaptureInput = byId<HTMLInputElement>("pick-capture");
+const pickResult = byId<HTMLDivElement>("pick-result");
+const pickCoords = byId<HTMLParagraphElement>("pick-coords");
+const pickMeta = byId<HTMLParagraphElement>("pick-meta");
+const pickPreviewWrap = byId<HTMLDivElement>("pick-preview-wrap");
+const pickPreview = byId<HTMLImageElement>("pick-preview");
+const copyJsonButton = byId<HTMLButtonElement>("copy-json");
+const copyCoordsButton = byId<HTMLButtonElement>("copy-coords");
+const clearPickButton = byId<HTMLButtonElement>("clear-pick");
+const pickFeedback = byId<HTMLParagraphElement>("pick-feedback");
+
+interface StoredPickedRegion {
+  cancelled?: boolean;
+  viewport?: { x: number; y: number; width: number; height: number };
+  page?: { x: number; y: number; width: number; height: number };
+  scroll?: { x: number; y: number };
+  viewportSize?: { width: number; height: number };
+  devicePixelRatio?: number;
+  element?: string | null;
+  at?: string;
+  screenshot?: { data?: string; mimeType?: string; width?: number; height?: number };
+}
+
+let currentPickedRegion: StoredPickedRegion | null = null;
 let editingToken = false;
 let targetSignature = "";
 let latestPayload: StatusPayload | null = null;
@@ -222,6 +247,59 @@ function render(payload: StatusPayload): void {
   renderTargetTabs(payload);
   renderRole(payload);
   renderActivity(payload.activity);
+  void refreshPickedRegion();
+}
+
+async function refreshPickedRegion(): Promise<void> {
+  try {
+    const stored = (await chrome.storage.local.get("lastPickedRegion")) as { lastPickedRegion?: StoredPickedRegion };
+    const region = stored.lastPickedRegion;
+    currentPickedRegion = region ?? null;
+
+    if (!pickResult) return;
+    if (!region || region.cancelled || !region.viewport) {
+      pickResult.hidden = true;
+      return;
+    }
+
+    pickResult.hidden = false;
+    if (pickCoords) {
+      pickCoords.textContent = `${region.viewport.x}, ${region.viewport.y} (${region.viewport.width}×${region.viewport.height})`;
+    }
+    if (pickMeta) {
+      const parts = [
+        `page: ${region.page?.x ?? region.viewport.x},${region.page?.y ?? region.viewport.y}`,
+        `scroll: ${region.scroll?.x ?? 0},${region.scroll?.y ?? 0}`,
+        region.devicePixelRatio ? `DPR ${region.devicePixelRatio}` : null,
+        region.element ? region.element : null,
+      ].filter(Boolean);
+      pickMeta.textContent = parts.join(" · ");
+    }
+
+    if (pickPreviewWrap && pickPreview) {
+      if (region.screenshot?.data) {
+        pickPreview.src = `data:${region.screenshot.mimeType ?? "image/png"};base64,${region.screenshot.data}`;
+        pickPreviewWrap.style.display = "block";
+      } else {
+        pickPreviewWrap.style.display = "none";
+      }
+    }
+  } catch {
+    // Ignore storage lookup error in popup
+  }
+}
+
+function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+  }
+  const el = document.createElement("textarea");
+  el.value = text;
+  document.body.append(el);
+  el.select();
+  const ok = document.execCommand("copy");
+  el.remove();
+  return Promise.resolve(ok);
 }
 
 async function refresh(): Promise<void> {
@@ -326,6 +404,52 @@ takeoverButton?.addEventListener("click", () => {
     .sendMessage({ type: "popup:takeover" })
     .then(() => refresh())
     .catch(() => setFeedback("Could not switch browser."));
+});
+
+pickAreaButton?.addEventListener("click", () => {
+  const capture = pickCaptureInput?.checked === true;
+  if (pickFeedback) pickFeedback.textContent = "Activating crosshair on tab...";
+  void chrome.runtime.sendMessage({ type: "popup:pick_area", capture });
+  setTimeout(() => window.close(), 180);
+});
+
+copyJsonButton?.addEventListener("click", () => {
+  if (!currentPickedRegion) return;
+  void copyText(JSON.stringify(currentPickedRegion, null, 2)).then((ok) => {
+    if (pickFeedback) pickFeedback.textContent = ok ? "JSON copied to clipboard." : "Failed to copy.";
+    setTimeout(() => {
+      if (pickFeedback) pickFeedback.textContent = "";
+    }, 2000);
+  });
+});
+
+copyCoordsButton?.addEventListener("click", () => {
+  if (!currentPickedRegion?.viewport) return;
+  const vp = currentPickedRegion.viewport;
+  const text = `${vp.x},${vp.y} ${vp.width}x${vp.height}`;
+  void copyText(text).then((ok) => {
+    if (pickFeedback) pickFeedback.textContent = ok ? `Copied "${text}"` : "Failed to copy.";
+    setTimeout(() => {
+      if (pickFeedback) pickFeedback.textContent = "";
+    }, 2000);
+  });
+});
+
+clearPickButton?.addEventListener("click", () => {
+  void chrome.runtime.sendMessage({ type: "popup:clear_picked" }).then(() => {
+    currentPickedRegion = null;
+    if (pickResult) pickResult.hidden = true;
+    if (pickFeedback) pickFeedback.textContent = "Cleared.";
+    setTimeout(() => {
+      if (pickFeedback) pickFeedback.textContent = "";
+    }, 1500);
+  });
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes["lastPickedRegion"]) {
+    void refreshPickedRegion();
+  }
 });
 
 void refresh();

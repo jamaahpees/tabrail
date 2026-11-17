@@ -29,11 +29,11 @@ const popup = await browser.newPage();
 await popup.setViewport({ width: 360, height: 640 });
 await popup.goto(`chrome-extension://${extensionId}/popup.html`, { waitUntil: "domcontentloaded" });
 await sleep(2500);
-await popup.screenshot({ path: `${OUT}/popup-dark.png` });
+await popup.screenshot({ path: `${OUT}/popup-dark.png`, fullPage: true });
 
 await popup.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]);
 await sleep(300);
-await popup.screenshot({ path: `${OUT}/popup-light.png` });
+await popup.screenshot({ path: `${OUT}/popup-light.png`, fullPage: true });
 
 const options = await browser.newPage();
 await options.setViewport({ width: 900, height: 900 });

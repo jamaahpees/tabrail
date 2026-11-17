@@ -232,6 +232,10 @@ test("drives a real Chrome tab through the bridge", async (t) => {
   assert.ok(isPng(picked.screenshot.data), "picked region captured as a PNG");
   assert.equal(picked.screenshot.css.width, picked.viewport.width, "picked screenshot matches the region");
 
+  const hud = await page.$("[data-tabrail-hud]");
+  assert.ok(hud, "on-page HUD badge appeared after picking");
+  assert.match(await page.$eval("[data-tabrail-hud]", (el) => el.textContent), /Area: \d+,\d+/, "HUD shows area coords");
+
   const cancelCall = client.call("pick_region", { tabId, timeoutMs: 20_000 });
   await sleep(600);
   await page.keyboard.press("Escape");
@@ -386,6 +390,13 @@ test("drives a real Chrome tab through the bridge", async (t) => {
     8000,
     "active tab follows focus",
   );
+
+  await popup.bringToFront();
+  await popup.waitForSelector("#pick-result:not([hidden])", { timeout: 8000 });
+  const coordsText = await popup.$eval("#pick-coords", (el) => el.textContent);
+  assert.match(coordsText, /\d+, \d+ \(\d+×\d+\)/, "popup displays the picked area coordinates");
+  await clickInPage(popup, "#clear-pick");
+  await popup.waitForSelector("#pick-result[hidden]", { timeout: 5000 });
 
   await secondPage.bringToFront();
   await secondPage.evaluate(() => {

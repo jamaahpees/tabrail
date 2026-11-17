@@ -485,6 +485,92 @@ function clampTo(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+function showPickedBadge(picked: {
+  viewport: { x: number; y: number; width: number; height: number };
+  page: { x: number; y: number; width: number; height: number };
+  scroll: { x: number; y: number };
+}): void {
+  const existing = document.querySelector("[data-tabrail-hud]");
+  if (existing) existing.remove();
+
+  const hud = document.createElement("div");
+  hud.dataset["tabrailHud"] = "1";
+  hud.style.cssText = [
+    "position:fixed",
+    "bottom:18px",
+    "right:18px",
+    "z-index:2147483647",
+    "display:flex",
+    "align-items:center",
+    "gap:10px",
+    "padding:8px 12px",
+    "background:#1c1914",
+    "color:#f2ede4",
+    "border:1px solid #3b352b",
+    "border-radius:8px",
+    "box-shadow:0 4px 20px rgba(0,0,0,0.35)",
+    "font:12px/1.4 system-ui,-apple-system,sans-serif",
+    "pointer-events:auto",
+  ].join(";");
+
+  const text = document.createElement("span");
+  text.textContent = `Area: ${picked.viewport.x},${picked.viewport.y} (${picked.viewport.width}×${picked.viewport.height})`;
+  text.style.fontFamily = "ui-monospace,SF Mono,Consolas,monospace";
+  text.style.fontWeight = "600";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.textContent = "Copy JSON";
+  copyBtn.style.cssText = [
+    "padding:3px 9px",
+    "background:#e0a44a",
+    "color:#191610",
+    "border:none",
+    "border-radius:4px",
+    "font:inherit",
+    "font-size:11px",
+    "font-weight:600",
+    "cursor:pointer",
+  ].join(";");
+
+  copyBtn.addEventListener("click", () => {
+    const raw = JSON.stringify(picked, null, 2);
+    void navigator.clipboard.writeText(raw).then(
+      () => {
+        copyBtn.textContent = "Copied!";
+        setTimeout(() => {
+          copyBtn.textContent = "Copy JSON";
+        }, 1500);
+      },
+      () => {
+        copyBtn.textContent = "Failed";
+      },
+    );
+  });
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.textContent = "✕";
+  closeBtn.title = "Dismiss";
+  closeBtn.style.cssText = [
+    "padding:2px 6px",
+    "background:transparent",
+    "color:#b3a999",
+    "border:none",
+    "font:inherit",
+    "font-size:12px",
+    "cursor:pointer",
+  ].join(";");
+  closeBtn.addEventListener("click", () => hud.remove());
+
+  hud.append(text, copyBtn, closeBtn);
+  (document.body ?? document.documentElement).append(hud);
+
+  setTimeout(() => {
+    if (hud.isConnected) hud.remove();
+  }, 12_000);
+}
+
 function pickRegion(params: Record<string, unknown>): Promise<unknown> {
   const hasTarget = Boolean(str(params["ref"]) || str(params["selector"]));
   const target = hasTarget ? resolveTarget(params) : null;
@@ -604,7 +690,7 @@ function pickRegion(params: Record<string, unknown>): Promise<unknown> {
         finish({ cancelled: true, note: "The drag was too small to count as a region." });
         return;
       }
-      finish({
+      const result = {
         cancelled: false,
         viewport,
         page: {
@@ -617,7 +703,10 @@ function pickRegion(params: Record<string, unknown>): Promise<unknown> {
         viewportSize: { width: window.innerWidth, height: window.innerHeight },
         devicePixelRatio: window.devicePixelRatio,
         element: target ? describeElement(target) : null,
-      });
+      };
+      showPickedBadge(result);
+      void chrome.runtime.sendMessage({ type: "content:picked_region", region: result }).catch(() => undefined);
+      finish(result);
     });
 
     window.addEventListener("keydown", onKey, true);
@@ -685,6 +774,15 @@ function init(): void {
       }
     })();
     return true;
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.altKey && event.shiftKey && (event.key === "P" || event.key === "p")) {
+      event.preventDefault();
+      if (!document.querySelector('[data-tabrail-pick="1"]')) {
+        void pickRegion({ timeoutMs: 60000 });
+      }
+    }
   });
 }
 

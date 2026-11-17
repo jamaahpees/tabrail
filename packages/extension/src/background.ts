@@ -970,10 +970,22 @@ async function pickRegion(params: Record<string, unknown>): Promise<unknown> {
 
   const picked = (await contentRpc(tab, "pick_region", params)) as PickedRegion;
   if (!picked || picked.cancelled || !picked.viewport) return picked;
-  if (params["capture"] !== true) return picked;
 
-  const shot = (await screenshot({ tabId, region: picked.viewport, space: "viewport" })) as Record<string, unknown>;
-  return { ...picked, screenshot: shot };
+  let shot: Record<string, unknown> | null = null;
+  if (params["capture"] === true) {
+    shot = (await screenshot({ tabId, region: picked.viewport, space: "viewport" })) as Record<string, unknown>;
+  }
+
+  const result = {
+    ...picked,
+    ...(shot ? { screenshot: shot } : {}),
+    url: tab.url,
+    title: tab.title,
+    at: new Date().toISOString(),
+  };
+
+  void chrome.storage.local.set({ lastPickedRegion: result });
+  return result;
 }
 
 function readRegion(value: unknown): { x: number; y: number; width: number; height: number } | null {
@@ -1484,6 +1496,49 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       if (needsReconnect) requestReconnect("settings saved");
       sendResponse({ ok: true, settings: { port: settings.port, enabled: settings.enabled } });
     })();
+    return true;
+  }
+
+  if (type === "content:picked_region") {
+    const region = (message as { region?: unknown }).region;
+    if (region && typeof region === "object") {
+      void (async () => {
+        const tab = sender.tab ?? (await currentTargetTab());
+        const entry = {
+          ...(region as Record<string, unknown>),
+          url: tab?.url,
+          title: tab?.title,
+          at: new Date().toISOString(),
+        };
+        await chrome.storage.local.set({ lastPickedRegion: entry });
+      })();
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (type === "popup:pick_area") {
+    const capture = (message as { capture?: boolean }).capture === true;
+    void (async () => {
+      try {
+        const tab = await currentTargetTab();
+        if (!tab?.id) {
+          sendResponse({ ok: false, error: "No active tab found." });
+          return;
+        }
+        const result = await pickRegion({ tabId: tab.id, capture });
+        sendResponse({ ok: true, result });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        sendResponse({ ok: false, error: msg });
+      }
+    })();
+    return true;
+  }
+
+  if (type === "popup:clear_picked") {
+    void chrome.storage.local.remove("lastPickedRegion");
+    sendResponse({ ok: true });
     return true;
   }
 

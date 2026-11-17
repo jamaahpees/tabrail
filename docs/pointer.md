@@ -44,7 +44,16 @@ Aim at an element instead of computing pixels by passing `ref` or `selector` wit
 
 ## Pick a region by hand
 
-Guessing coordinates from a screenshot is the slow path. `browser_pick_region` puts a crosshair over the page and lets the person drag the exact rectangle.
+Guessing coordinates from a screenshot is the slow path. You can pick an exact rectangle in three ways:
+
+1. **Via MCP tool**: call `browser_pick_region { capture: true }`.
+2. **Via extension popup**: click the **Pick area** button under the *Selected area* card.
+3. **Via keyboard shortcut**: press **Alt+Shift+P** directly on the active web page.
+
+When picking is triggered:
+- A crosshair overlay appears over the page. Drag the rectangle you want.
+- On mouse release, a floating HUD appears in the corner showing the coordinates with a quick **Copy JSON** button.
+- The coordinates, viewport rectangle, document position, scroll offset, and optional preview image are saved and appear in the popup card.
 
 ```text
 picked = browser_pick_region { capture: true }

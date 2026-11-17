@@ -75,6 +75,38 @@
         <p id="tab-url" class="tab-url">Focus a normal web page to let the agent read it.</p>
       </section>
 
+      <section class="card" aria-labelledby="pick-title">
+        <div class="card-head">
+          <h2 id="pick-title">Selected area</h2>
+          <button id="pick-area" class="btn btn-primary btn-small" type="button">Pick area</button>
+        </div>
+        <p id="pick-hint" class="hint">Select a rectangle on the target tab (or press Alt+Shift+P).</p>
+
+        <div class="row space" style="margin-top: 8px;">
+          <label class="switch" for="pick-capture">
+            <input id="pick-capture" type="checkbox" />
+            <span>Include screenshot</span>
+          </label>
+        </div>
+
+        <div id="pick-result" hidden style="margin-top: 10px;">
+          <div class="pick-box">
+            <p id="pick-coords" class="mono" style="font-weight: 600;"></p>
+            <p id="pick-meta" class="hint mono"></p>
+          </div>
+          <div id="pick-preview-wrap" style="margin-top: 8px; display: none;">
+            <img id="pick-preview" alt="Picked preview" style="max-width: 100%; max-height: 120px; border-radius: 4px; border: 1px solid var(--border); display: block;" />
+          </div>
+          <div class="row space" style="margin-top: 8px;">
+            <button id="copy-json" class="btn btn-small" type="button">Copy JSON</button>
+            <button id="copy-coords" class="btn btn-small" type="button">Copy x,y</button>
+            <button id="clear-pick" class="btn btn-small" type="button">Clear</button>
+          </div>
+        </div>
+
+        <p id="pick-feedback" class="hint feedback" role="status" aria-live="polite"></p>
+      </section>
+
       <section class="card" aria-labelledby="activity-title">
         <h2 id="activity-title">Recent calls</h2>
         <ul id="activity" class="activity">
